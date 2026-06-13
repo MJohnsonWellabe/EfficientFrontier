@@ -46,5 +46,15 @@ powershell -NoProfile -Command "$root=(Get-Location).Path; $l=[System.Net.HttpLi
 Note: a web server started inside a cloud/remote session is **not reachable** from Matt's browser —
 local viewing always runs on his own machine after `git pull origin main`.
 
+## Access gate (client-side only)
+The Pages site is password-gated: the **root `index.html`** is a landing page that checks a password
+and, on success, sets `sessionStorage.ef_auth` and forwards to `viewer/index.html`; an early guard
+script in `viewer/index.html`'s `<head>` bounces back to the landing page if that token is absent.
+This is **obfuscation, not security** — it's a static site, so the page source and `data/*.csv` are
+reachable by a determined visitor; it only deters casual access. The stored value is the **SHA-256
+hash** of the password (plaintext is never committed). To change the password, recompute its SHA-256
+and update the `EXPECTED`/guard hash in **both** `index.html` and `viewer/index.html`. Real protection
+would require private Pages (Enterprise) or an authenticated host.
+
 ## Open item
 Per-product stochastic σ for claims and lapse are currently assumed. They are being re-derived from seriatim aggregate A/E ratios (process vs. systematic risk). See `MODEL_CANON.md §6`.

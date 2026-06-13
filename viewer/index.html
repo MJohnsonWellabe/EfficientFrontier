@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Efficient Frontier — Capital Deployment</title>
+<!-- Password guard: runs before anything else. If this browser session hasn't unlocked via the
+     landing page (../index.html), bounce back to it. Client-side obfuscation only (static site).
+     EXPECTED is SHA-256 of the password; keep it identical to the hash in /index.html. -->
+<script>(function(){var E='dc7620ebfc35d54ef34e32b9eb6f69f1bfe93f294370c2798d91147e34e7ad56';try{if(sessionStorage.getItem('ef_auth')!==E){location.replace('../index.html');}}catch(e){location.replace('../index.html');}})();</script>
 <style>
 :root{--ink:#0d1b26;--ink2:#1a2e3e;--paper:#f9fafc;--card:#ffffff;--line:#dce4eb;--muted:#5c6c79;--faint:#8d9faa;--teal:#0a7080;--teald:#075e6d;--teallt:#e4f3f5;--amber:#b57009;--amberlt:#fdf3e0;--green:#1a6e45;--greenlt:#e4f2eb;--red:#b53323;--redlt:#fce8e5;--navy:#0d1b26;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;--sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:13.5px;line-height:1.5}
@@ -57,6 +61,8 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 .scen-tbl th{font-size:10.5px;padding:5px 8px}.scen-tbl td{font-size:11.5px;padding:4px 8px}
 .fr-row td{background:#f0fbfc!important;font-weight:600}
 .fr-row td:first-child::after{content:" ●";color:var(--teal);font-size:9px}
+/* Lock table headers while scrolling inside any .tbl-scroll box (Scenario Results, VNB, RBC) */
+.tbl-scroll thead th{position:sticky;top:0;z-index:2;background:var(--card);box-shadow:inset 0 -2px 0 var(--ink)}
 .hint{font-size:11.5px;color:var(--muted);line-height:1.55}
 .pwrap{height:5px;background:#e4edf3;border-radius:3px;overflow:hidden;margin-top:10px;display:none}
 .pfill{height:100%;width:0;background:var(--teal);transition:width .08s}
@@ -111,6 +117,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 <nav><div id="nav">
   <button data-tab="config" class="active">Configuration</button>
   <button data-tab="frontier">Efficient Frontier</button>
+  <button data-tab="compare" title="Compare all metrics for two scenarios side by side">Compare</button>
   <button data-tab="vnb" title="Value of New Business — projected value created by 2026 sales, by product">VNB by Product</button>
   <button data-tab="rbc" title="Risk-Based Capital and surplus — capital adequacy under each scenario">RBC &amp; Surplus</button>
   <button data-tab="evidence" title="Why each scenario passes or fails the investment constraints">Constraint Evidence</button>
@@ -348,6 +355,22 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   </div>
 </section>
 
+<!-- ===== COMPARE ===== -->
+<section class="tab" id="tab-compare">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">Compare Scenarios</h2>
+      <span style="font-size:11px;color:var(--muted)">All meaningful metrics for two selections, side by side</span>
+    </div>
+    <p class="hint" style="margin-bottom:12px">Pick any two selections — Baseline, a run scenario, or your custom scenario — to compare every metric. Run the frontier first to populate the list. Δ&nbsp;=&nbsp;B&nbsp;−&nbsp;A.</p>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px">
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO A</label><select id="cmpSelA" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO B</label><select id="cmpSelB" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+    </div>
+    <div id="cmp-result"></div>
+  </div>
+</section>
+
 <!-- ===== VNB ===== -->
 <section class="tab" id="tab-vnb">
 <div class="card">
@@ -361,6 +384,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
     </div>
   </div>
   <div class="g4" id="vnbStats" style="margin-bottom:18px"></div>
+  <div id="vnbSales" style="margin-bottom:18px"></div>
   <div class="tbl-scroll"><table id="vnbTbl"></table></div>
 </div>
 </section>

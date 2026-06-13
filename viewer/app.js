@@ -6,6 +6,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   cons:{rbcFloor:3.5,tacChgFloor:-.15,irr3on:true,irrA:.08,irrB:.15,deYr:5,cumDeYr:12,cumDEFloor:-180,de1Floor:-120},
   surplusNote:{on:false,amount:150,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
+  cmp:{a:'base',b:'base'},
   results:[],years:[],vnbProd:'MS',vnbBasis:'orig',rbcBasis:'orig'};
 var PRODS=['MS','PN','HI'],PNAME={MS:'Medicare Supplement',PN:'Preneed',HI:'Hospital Indemnity'},PSURP={MS:'Medicare Supplement',PN:'PreNeed',HI:'Hospital Indemnity'};
 var SALES_YEARS=[2026,2027,2028,2029,2030,2031,2032,2033,2034,2035];
@@ -636,6 +637,25 @@ function sensScalars(scen,sensId){
   }
   return {claims:claims,lapse:lapse};
 }
+/* ---- sales LEVELS ($M) for a selection (not scalars) ----
+   Scenario: the growth-compounded forward projection (updSales from mkScalars).
+   Baseline (scen=null): the workbook per-year anchors. Indexed by SALES_YEARS. */
+function salesLevels(scen){
+  var out={};
+  if(scen){
+    var sc=mkScalars(scen.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
+    PRODS.forEach(function(c){out[c]=SALES_YEARS.map(function(y,i){return sc.updSales[PNAME[c]][i];});});
+  }else{
+    PRODS.forEach(function(c){out[c]=SALES_YEARS.map(function(y){return S.origSales[c][y];});});
+  }
+  return out;
+}
+function salesLevelTable(scen){
+  var lv=salesLevels(scen),shortName={MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'};
+  var h='<table class="atbl"><thead><tr><th>Sales ($M/yr)</th>'+SALES_YEARS.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
+  PRODS.forEach(function(c){h+='<tr><td>'+shortName[c]+'</td>'+lv[c].map(function(v){return'<td>'+fmt(v,1)+'</td>';}).join('')+'</tr>';});
+  return h+'</tbody></table>';
+}
 function renderVNB(){
   if(!S.baseline)return;
   var c=S.vnbProd,basis=S.vnbBasis,P=S.params.assum;
@@ -647,6 +667,11 @@ function renderVNB(){
   else{var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse);vnb=d.recNB[c];res=EFENG.vnbResults(vnb,P.disc);}
   var statsEl=document.getElementById('vnbStats');
   statsEl.innerHTML='<div class="vnb-stat"><span class="k">IRR</span><span class="v">'+pct(res.irr,2)+'</span></div><div class="vnb-stat"><span class="k">PV Dist. Earnings</span><span class="v">'+fmt(res.npvDE,1)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">PV Premium</span><span class="v">'+fmt(res.npvPremium,0)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">Product / Basis</span><span class="v" style="font-size:14px">'+({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c]+' / '+(basis==='orig'?'Orig':'Recalc')+'</span></div>';
+  var vsEl=document.getElementById('vnbSales');
+  if(vsEl){
+    var lab=scen?('Selected scenario #'+scen.id+' — projected sales levels ($M): 2026 anchor compounded by the growth schedule.'):'Baseline — workbook sales anchors ($M).';
+    vsEl.innerHTML='<div class="hint" style="margin-bottom:5px">'+lab+'</div><div class="hscroll">'+salesLevelTable(scen)+'</div>';
+  }
   var rows=[['Premium','Premium'],['Investment income','NII'],['Total revenue','TotRev'],['Claims','Claims'],['Other benefits','OthBen'],['Total benefits','TotBen'],['Commissions','Comm'],['Premium tax','PremTax'],['Acquisition','Acq'],['Maintenance','Maint'],['Total expenses','TotExp'],['Pre-tax income','PTI'],['Tax','Tax'],['After-tax income','ATI'],['Change in TS','ChgTS'],['Distributable earnings','DE']];
   var yrs=[]; for(var y=2026;y<=2055;y++)yrs.push(y);
   var h='<thead><tr><th>Line ($M)</th>'+yrs.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
@@ -803,15 +828,14 @@ function renderDebug(){
   function sec(t,bodyFn){return'<div class="dbg-sec"><div class="dbg-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+t+' <span>▾</span></div><div class="dbg-body open">'+bodyFn()+'</div></div>';}
   var html='';
   /* 1: Scalars - every year for sales, one value for claims/lapse */
-  html+=sec('1 — Scalars',function(){
-    if(isBase)return'<p class="hint">Baseline — all scalars = 1.0</p>';
-    var sc=det.scalars;
-    var h='<p class="hint" style="margin-bottom:10px">Sales scalar per year; one claims and lapse scalar per product (flat across all years).</p>';
-    h+='<table><thead><tr><th>Product</th>'+SALES_YEARS.map(function(y){return'<th>Sales '+y+'</th>';}).join('')+'<th>Claims scalar</th><th>Lapse scalar</th></tr></thead><tbody>';
+  html+=sec('1 — Sales Levels &amp; Scalars',function(){
+    var lv=salesLevels(scen);   // scen=null for baseline -> workbook anchors
+    var h='<p class="hint" style="margin-bottom:10px">Per product: forward sales <strong>level</strong> ($M — the 2026 anchor compounded by the growth schedule) and the per-year sales <strong>scalar</strong> (updated/original). Claims and lapse scalars are one value per product.'+(isBase?' Baseline shown: levels = workbook anchors, all scalars = 1.0.':'')+'</p>';
+    h+='<table><thead><tr><th>Product / Line</th>'+SALES_YEARS.map(function(y){return'<th>'+y+'</th>';}).join('')+'<th>Claims sc.</th><th>Lapse sc.</th></tr></thead><tbody>';
     PRODS.forEach(function(c){
-      h+='<tr><td>'+PNAME[c]+'</td>';
-      SALES_YEARS.forEach(function(y){var ss=EFENG.salesScalar(sc,c,String(y));h+='<td>'+fmt(ss,4)+'</td>';});
-      h+='<td>'+fmt(sc.claims[PNAME[c]],4)+'</td><td>'+fmt(sc.lapse[PNAME[c]],4)+'</td></tr>';
+      h+='<tr class="sub"><td colspan="'+(SALES_YEARS.length+3)+'">'+PNAME[c]+'</td></tr>';
+      h+='<tr><td style="padding-left:12px">Sales level ($M)</td>'+lv[c].map(function(v){return'<td>'+fmt(v,1)+'</td>';}).join('')+'<td></td><td></td></tr>';
+      h+='<tr class="inc-row"><td style="padding-left:12px">Sales scalar</td>'+SALES_YEARS.map(function(y){var ss=isBase?1:EFENG.salesScalar(det.scalars,c,String(y));return'<td>'+fmt(ss,4)+'</td>';}).join('')+'<td>'+(isBase?fmt(1,4):fmt(det.scalars.claims[PNAME[c]],4))+'</td><td>'+(isBase?fmt(1,4):fmt(det.scalars.lapse[PNAME[c]],4))+'</td></tr>';
     });
     return h+'</tbody></table>';
   });
@@ -858,7 +882,7 @@ function renderDebug(){
     });
     return h+'</tbody></table>';
   });
-  /* 4: Charge walk - toggle 2026-2030, plus baseline vs scenario side-by-side */
+  /* 4: Charge walk - toggle 2026-2030; per-product baseline vs scenario, symmetric */
   var dbgYear=window._dbgYear||2026;
   html+=sec('4 — RBC Charge Walk &amp; Comparison',function(){
     var yrBtns='<div style="display:flex;gap:6px;margin-bottom:10px">'+[2026,2027,2028,2029,2030].map(function(y){return'<button class="btn '+(dbgYear===y?'':'ghost')+' sm" onclick="window._dbgYear='+y+';renderDebug()">'+y+'</button>';}).join('')+'</div>';
@@ -866,12 +890,25 @@ function renderDebug(){
     if(!orig)return yrBtns+'<p class="hint">No data for this year.</p>';
     var recSc=det?det.surplus[y]:null;
     var pnames=Object.keys(orig.prod);
-    var h=yrBtns+'<table><thead><tr><th>TSC</th>'+pnames.map(function(p){return'<th>'+p.replace('Medicare Supplement','Med Supp').replace('Hospital Indemnity','Hosp Ind')+'</th>';}).join('')+'<th>All Other</th><th>Baseline Total</th>'+(recSc?'<th>Scenario Total</th><th>Δ</th>':'')+'</tr></thead><tbody>';
-    EFENG.TSC_KEYS.forEach(function(k){h+='<tr><td>'+k+'</td>'+pnames.map(function(p){return'<td>'+fmt((orig.prod[p]||{})[k],3)+'</td>';}).join('')+'<td>'+fmt(orig.allOther[k],3)+'</td><td>'+fmt(orig.tot[k],3)+'</td>'+(recSc?'<td>'+fmt(recSc.tot[k],3)+'</td><td style="color:'+(Math.abs((recSc.tot[k]||0)-(orig.tot[k]||0))<1e-9?'var(--muted)':((recSc.tot[k]||0)>(orig.tot[k]||0)?'var(--red)':'var(--green)'))+'">'+fmt((recSc.tot[k]||0)-(orig.tot[k]||0),3)+'</td>':'')+'</tr>';});
-    h+='<tr class="rule"><td>Post-cov</td>'+pnames.map(function(){return'<td></td>';}).join('')+'<td></td><td>'+fmt(orig.postCov,3)+'</td>'+(recSc?'<td>'+fmt(recSc.postCov,3)+'</td><td>'+fmt(recSc.postCov-orig.postCov,3)+'</td>':'')+'</tr>';
-    h+='<tr><td>Req capital</td>'+pnames.map(function(){return'<td></td>';}).join('')+'<td></td><td>'+fmt(orig.reqCap,3)+'</td>'+(recSc?'<td>'+fmt(recSc.reqCap,3)+'</td><td></td>':'')+'</tr>';
-    h+='<tr><td>TAC</td>'+pnames.map(function(){return'<td></td>';}).join('')+'<td></td><td>'+fmt(orig.tac,2)+'</td>'+(recSc?'<td>'+fmt(recSc.tac,2)+'</td><td style="color:'+(recSc.incDelta>=0?'var(--green)':'var(--red)')+'">'+fmt(recSc.incDelta,2)+' (inc Δ)</td>':'')+'</tr>';
-    h+='<tr class="rule"><td>RBC Ratio</td>'+pnames.map(function(){return'<td></td>';}).join('')+'<td></td><td>'+rx(orig.ratio)+'</td>'+(recSc?'<td>'+rx(recSc.ratio)+'</td><td></td>':'')+'</tr>';
+    var shortP=function(p){return p.replace('Medicare Supplement','Med Supp').replace('Hospital Indemnity','Hosp Ind').replace('PreNeed','Preneed');};
+    var note='<p class="hint" style="margin-bottom:8px">'+(recSc?'Per-product NAIC charges, <strong>baseline vs the selected scenario</strong>. All Other is frozen across scenarios; Δ = scenario − baseline on the combined total.':'Baseline only — select a run scenario (top of tab) to see the per-product scenario columns and Δ.')+'</p>';
+    var dCol=function(d){return'<td style="color:'+(Math.abs(d)<1e-9?'var(--muted)':(d>0?'var(--red)':'var(--green)'))+'">'+fmt(d,3)+'</td>';};
+    var h=yrBtns+note+'<table><thead><tr><th>TSC</th>';
+    pnames.forEach(function(p){h+='<th>'+shortP(p)+' Base</th>'+(recSc?'<th>'+shortP(p)+' Scen</th>':'');});
+    h+='<th>All Other</th><th>Total Base</th>'+(recSc?'<th>Total Scen</th><th>Δ Total</th>':'')+'</tr></thead><tbody>';
+    EFENG.TSC_KEYS.forEach(function(k){
+      h+='<tr><td>'+k+'</td>';
+      pnames.forEach(function(p){h+='<td>'+fmt((orig.prod[p]||{})[k],3)+'</td>'+(recSc?'<td>'+fmt((recSc.prod[p]||{})[k],3)+'</td>':'');});
+      h+='<td>'+fmt(orig.allOther[k],3)+'</td><td>'+fmt(orig.tot[k],3)+'</td>';
+      if(recSc)h+='<td>'+fmt(recSc.tot[k],3)+'</td>'+dCol((recSc.tot[k]||0)-(orig.tot[k]||0));
+      h+='</tr>';
+    });
+    var prodCells=pnames.length*(recSc?2:1)+1;   // product columns + All Other, blanked on summary rows
+    var blanks=function(n){var s='';for(var i=0;i<n;i++)s+='<td></td>';return s;};
+    h+='<tr class="rule"><td>Post-cov</td>'+blanks(prodCells)+'<td>'+fmt(orig.postCov,3)+'</td>'+(recSc?'<td>'+fmt(recSc.postCov,3)+'</td>'+dCol(recSc.postCov-orig.postCov):'')+'</tr>';
+    h+='<tr><td>Req capital</td>'+blanks(prodCells)+'<td>'+fmt(orig.reqCap,3)+'</td>'+(recSc?'<td>'+fmt(recSc.reqCap,3)+'</td>'+dCol(recSc.reqCap-orig.reqCap):'')+'</tr>';
+    h+='<tr><td>TAC</td>'+blanks(prodCells)+'<td>'+fmt(orig.tac,2)+'</td>'+(recSc?'<td>'+fmt(recSc.tac,2)+'</td><td style="color:'+(recSc.incDelta>=0?'var(--green)':'var(--red)')+'">'+fmt(recSc.incDelta,2)+' (inc Δ)</td>':'')+'</tr>';
+    h+='<tr class="rule"><td>RBC Ratio</td>'+blanks(prodCells)+'<td>'+rx(orig.ratio)+'</td>'+(recSc?'<td>'+rx(recSc.ratio)+'</td>'+dCol(recSc.ratio-orig.ratio):'')+'</tr>';
     return h+'</tbody></table>';
   });
   /* 5: Constraints with full descriptions */
@@ -895,10 +932,99 @@ function renderDebug(){
   document.getElementById('dbgContent').innerHTML=html;
 }
 
+/* ---- Compare tab: two scenarios side by side ---- */
+// Normalize a selection ('base' or a result id) into a flat metrics object. Baseline lacks the
+// stochastic-risk metrics (returns null for those). RBC-by-year is recomputed deterministically
+// via buildScen (it isn't stored on the result object); min RBC uses the stored run value.
+function metricsFor(sel){
+  if(sel==='base'||sel==null){
+    var b=S.baseline;if(!b)return null;
+    var rbcB={};[2026,2027,2028,2029,2030].forEach(function(y){rbcB[y]=b.surplusCalc[y]?b.surplusCalc[y].ratio:null;});
+    return {label:'Baseline',sales:{MS:S.origSales.MS[2026],PN:S.origSales.PN[2026],HI:S.origSales.HI[2026]},
+      npv26:b.npv26,irr26:b.irr26,portNPVAll:b.portNPV,portIRRAll:b.portIRR,wtdIRR:null,
+      risk:null,ddWorst:null,riskSD:null,cte90:null,p10:null,p90:null,
+      minRBC:b.minRBC,rbc:rbcB,minTacChg:null,de1:null,dePos:null,cumMin:null,cumPos:null,
+      feasible:null,isFrontier:null,failCodes:null};
+  }
+  var r=S.results.find(function(x){return String(x.id)===String(sel);});if(!r)return null;
+  var d=buildScen(r.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
+  var rbc={};[2026,2027,2028,2029,2030].forEach(function(y){rbc[y]=d.surplus[y]?d.surplus[y].ratio:null;});
+  var minTac=r.tacChg?Math.min.apply(null,Object.keys(r.tacChg).map(function(y){return r.tacChg[y];})):null;
+  var de1=r.de26?(r.de26[2026]||0):null,dePos=null,cumPos=null;
+  if(r.de26)for(var y1=2026;y1<=2055;y1++){if(r.de26[y1]>0){dePos=y1;break;}}
+  if(r.cumDE26)for(var y2=2026;y2<=2055;y2++){if(r.cumDE26[y2]>0){cumPos=y2;break;}}
+  var cumVals=r.cumDE26?Object.keys(r.cumDE26).map(function(y){return r.cumDE26[y];}):[];
+  var cumMin=cumVals.length?Math.min.apply(null,cumVals):null;
+  var sI=r.stochIRRs||[];
+  return {label:(r.isCustom?'★ Custom '+r.id:'#'+r.id),sales:r.sales,
+    npv26:r.npv26,irr26:r.irr26,portNPVAll:r.portNPVAll,portIRRAll:r.portIRRAll,wtdIRR:r.wtdIRR,
+    risk:r.risk,ddWorst:r.ddWorst,riskSD:r.riskSD,cte90:r.cte90,
+    p10:sI.length?pctile(sI,10):null,p90:sI.length?pctile(sI,90):null,
+    minRBC:r.minRBC,rbc:rbc,minTacChg:minTac,de1:de1,dePos:dePos,cumMin:cumMin,cumPos:cumPos,
+    feasible:r.feasible,isFrontier:r.isFrontier,failCodes:(r.failures||[]).map(function(f){return f.code;})};
+}
+function renderCompare(){
+  var el=document.getElementById('cmp-result');if(!el)return;
+  if(!S.baseline){el.innerHTML='<p class="hint">Run the frontier first to populate scenarios, then pick two to compare.</p>';return;}
+  var A=metricsFor(S.cmp.a),B=metricsFor(S.cmp.b);
+  if(!A||!B){el.innerHTML='<p class="hint">A selected scenario no longer exists — re-run or pick again.</p>';return;}
+  function cell(x,u,dec){return (x==null||!isFinite(x))?'—':(u==='$'?'$'+fmt(x,dec)+'M':u==='%'?pct(x,dec):u==='x'?rx(x):fmt(x,dec));}
+  function dcell(a,b,u,dec){if(a==null||!isFinite(a)||b==null||!isFinite(b))return'';var d=b-a,s=d>=0?'+':'';return u==='%'?(s+fmt(d*100,dec)+' pp'):u==='x'?(s+fmt(d,3)+'×'):u==='$'?(s+'$'+fmt(d,dec)+'M'):(s+fmt(d,dec));}
+  function rowRaw(label,a,b,u,dec){return'<tr><td>'+label+'</td><td>'+cell(a,u,dec)+'</td><td>'+cell(b,u,dec)+'</td><td style="color:var(--muted)">'+dcell(a,b,u,dec)+'</td></tr>';}
+  function txt(label,a,b){return'<tr><td>'+label+'</td><td>'+a+'</td><td>'+b+'</td><td></td></tr>';}
+  function sub(t){return'<tr class="sub"><td colspan="4">'+t+'</td></tr>';}
+  function stat(v){return v==null?'—':(v?'<span class="chip ok">yes</span>':'<span class="chip bad">no</span>');}
+  function fails(c){return c==null?'—':(c.length?c.join(', '):'<span class="chip ok">none</span>');}
+  function tot(m){return m.sales?(m.sales.MS+m.sales.PN+m.sales.HI):null;}
+  var h='<div class="hscroll"><table class="atbl" style="min-width:580px"><thead><tr><th>Metric</th><th>'+A.label+'</th><th>'+B.label+'</th><th>Δ (B − A)</th></tr></thead><tbody>';
+  h+=sub('Sales — 2026 anchor ($M)');
+  h+=rowRaw('Med Supp',A.sales&&A.sales.MS,B.sales&&B.sales.MS,'$',1);
+  h+=rowRaw('Preneed',A.sales&&A.sales.PN,B.sales&&B.sales.PN,'$',1);
+  h+=rowRaw('Hosp Ind',A.sales&&A.sales.HI,B.sales&&B.sales.HI,'$',1);
+  h+=rowRaw('Total',tot(A),tot(B),'$',1);
+  h+=sub('Return');
+  h+=rowRaw('2026 PVDE',A.npv26,B.npv26,'$',1);
+  h+=rowRaw('2026 IRR',A.irr26,B.irr26,'%',2);
+  h+=rowRaw('Full-book PVDE',A.portNPVAll,B.portNPVAll,'$',1);
+  h+=rowRaw('Full-book IRR',A.portIRRAll,B.portIRRAll,'%',2);
+  h+=rowRaw('Wtd target IRR',A.wtdIRR,B.wtdIRR,'%',2);
+  h+=sub('Risk — 2026-issue, stochastic');
+  h+=rowRaw('Downside vs plan (CTE-90)',A.risk,B.risk,'$',1);
+  h+=rowRaw('Worst drawdown',A.ddWorst,B.ddWorst,'$',1);
+  h+=rowRaw('Std dev of PVDE',A.riskSD,B.riskSD,'$',1);
+  h+=rowRaw('CTE-90 avg PVDE',A.cte90,B.cte90,'$',1);
+  h+=rowRaw('P10 IRR',A.p10,B.p10,'%',2);
+  h+=rowRaw('P90 IRR',A.p90,B.p90,'%',2);
+  h+=sub('Capital / RBC');
+  h+=rowRaw('Min RBC 2026–30',A.minRBC,B.minRBC,'x');
+  [2026,2027,2028,2029,2030].forEach(function(y){h+=rowRaw('RBC '+y,A.rbc[y],B.rbc[y],'x');});
+  h+=rowRaw('Min ΔTAC / BOP',A.minTacChg,B.minTacChg,'%',1);
+  h+=sub('Distributable earnings — 2026 issue');
+  h+=rowRaw('Year-1 (2026) DE',A.de1,B.de1,'$',1);
+  h+=rowRaw('Deepest cumulative DE',A.cumMin,B.cumMin,'$',1);
+  h+=txt('First DE &gt; 0',A.dePos||'—',B.dePos||'—');
+  h+=txt('First cumDE &gt; 0',A.cumPos||'—',B.cumPos||'—');
+  h+=sub('Status');
+  h+=txt('Feasible',stat(A.feasible),stat(B.feasible));
+  h+=txt('On efficient frontier',stat(A.isFrontier),stat(B.isFrontier));
+  h+=txt('Failed constraints',fails(A.failCodes),fails(B.failCodes));
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+
 /* ---- selectors / file loading ---- */
 function populateSelectors(){
   var opts='<option value="base">Baseline</option>'+S.results.map(function(r){return'<option value="'+r.id+'">'+(r.isCustom?'★ Custom':'#'+r.id)+' MS'+fmt(r.sales.MS,0)+'/PN'+fmt(r.sales.PN,0)+'/HI'+fmt(r.sales.HI,1)+(r.isFrontier?' ⬤':r.feasible?'':'✗')+'</option>';}).join('');
   ['vnbScenSel','rbcScenSel','dbgScenSel','evScenSel'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=opts;});
+  // Compare-tab dropdowns: same option set; default A=first result, B=second (fallback baseline).
+  ['cmpSelA','cmpSelB'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=opts;});
+  var ids=S.results.map(function(r){return String(r.id);});
+  if(S.cmp.a!=='base'&&ids.indexOf(String(S.cmp.a))<0)S.cmp.a=ids[0]||'base';
+  if(S.cmp.b!=='base'&&ids.indexOf(String(S.cmp.b))<0)S.cmp.b=ids[1]||ids[0]||'base';
+  if(S.cmp.a==='base'&&S.cmp.b==='base'&&ids.length){S.cmp.a=ids[0];S.cmp.b=ids[1]||ids[0];}
+  var ea=document.getElementById('cmpSelA');if(ea)ea.value=String(S.cmp.a);
+  var eb=document.getElementById('cmpSelB');if(eb)eb.value=String(S.cmp.b);
+  var act=document.querySelector('.tab.active');if(act&&act.id==='tab-compare')renderCompare();
   // Reset shared selection to baseline after a fresh run, then sync all dropdowns
   if(!S.results.find(function(r){return String(r.id)===String(S.sel.scen);}))S.sel={scen:'base',sens:'det'};
   pushSelectionToDropdowns();
@@ -910,6 +1036,7 @@ function showTab(t){
   document.querySelectorAll('#nav button').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);});
   document.querySelectorAll('.tab').forEach(function(s){s.classList.toggle('active',s.id==='tab-'+t);});
   if(t==='frontier'){renderStats();drawChart();renderScenTable();}
+  if(t==='compare')renderCompare();
   if(t==='vnb')renderVNB();
   if(t==='rbc')renderRBC();
   if(t==='evidence')renderEvidence();
@@ -947,6 +1074,10 @@ document.getElementById('runBtn').addEventListener('click',function(){readInputs
 
 
 
+(function(){
+  // Compare-tab dropdowns drive the side-by-side view.
+  ['cmpSelA','cmpSelB'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){if(id==='cmpSelA')S.cmp.a=el.value;else S.cmp.b=el.value;renderCompare();});});
+})();
 (function(){var el=document.getElementById('dbgRefresh');if(el)el.addEventListener('click',renderDebug);})();
 document.querySelectorAll('#tab-config input,#tab-config select').forEach(function(el){if(el.id&&el.id.startsWith('c_'))el.addEventListener('change',updateConsSummary);});
 fileLoad('fEV','ev');fileLoad('fTS','ts');fileLoad('fSurp','surplus');
