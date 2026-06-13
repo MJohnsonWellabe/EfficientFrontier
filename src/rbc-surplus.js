@@ -201,7 +201,7 @@ function surplusNoteAnnual(inputs) {
       const isAnniv = (m === start.month && y >= start.year);
 
       if (isStart) { cashIn += amount; cashOut += amount * fees; }
-      if (isAnniv) { cashOut += amount * rate; }
+      if (isAnniv && !isEnd) { cashOut += amount * rate; }   // maturity year pays principal only, no interest
       if (isEnd)   { cashOut += amount; }
 
       out[y] += (cashIn - cashOut);

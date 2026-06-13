@@ -55,15 +55,26 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 - Inverted TS scaling formula in the 2026+ cohort recalc rows → corrected to direct `recalc / original` scaling.
 - PN in-force was bypassing the persistency regime → corrected to use the same year-based build/persistency switch as MS and HI.
 - Phantom terminal surplus release from the 360-vs-374-month grid difference → handled via tail pass-through logic.
+- **Surplus-note maturity-year interest (2026-06-13).** `surplusNoteAnnual` was charging interest on *every* anniversary including maturity, so a 10-yr note paid 11 interest charges and the final year paid interest **and** principal. Corrected so the maturity year pays **principal only** (interest accrues on each anniversary from the start through the year before maturity). The frozen `legacy/EfficientFrontier-29.html` keeps the old behavior; this is a decomposed-engine correction. (Does not affect §1 — `validate.js` computes RBC without the note.)
 
 ---
 
 ## 5. Configuration defaults
 
-- **Sales bounds:** MS `200–400`, PN `100–250`, HI `15–25`
+- **Sales bounds:** MS `250–350`, PN `200–240`, HI `18–25` (updated 2026-06-13)
 - **Hurdle rates:** MS `12%`, PN `10%`, HI `10%`
-- **Stochastic grid:** `100` LHS scenarios × `40` stochastic runs
-- **Constraints:** seven total. ⚠ CONFIRM — enumerate the full seven (with defaults) from your Configuration tab and paste them here. RBC floor is one of them; per the strategy work the floor is **450%**.
+- **Stochastic grid:** `100` LHS scenarios × `100` stochastic runs
+- **Constraints (Configuration-tab defaults, updated 2026-06-13):**
+  - C1 — Min RBC ratio 2026–2030 ≥ **4.0×**
+  - C2 — Min ΔTAC / BOP TAC ≥ **−12%** (every year)
+  - C3 — 2026-issue IRR ≥ sales-weighted hurdle (**on**)
+  - C4 — 2026-issue IRR tail: P(IRR < **8%**) ≤ **10%**
+  - C5 — 2026-issue DE > 0 by **yr 4** (2029)
+  - C6 — 2026-issue cumulative DE > 0 by **yr 10** (2035)
+  - CumDE floor ≥ **−$180M**; Year-1 DE floor ≥ **−$120M**
+- **Surplus note:** default **ON**, **$100M**, 10-yr tenor, 9% interest, 3% upfront fee, 2026-06-30 start.
+  Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the
+  §1 figures). **§1 RBC remains the no-note engine anchor** verified by `node runner/validate.js`.
 
 ---
 

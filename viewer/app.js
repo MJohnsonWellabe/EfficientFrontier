@@ -1,10 +1,10 @@
 (function(){'use strict';
 var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart:null,
-  bounds:{MS:[200,400],PN:[100,250],HI:[15,25]},hurdles:{MS:.12,PN:.10,HI:.10},
+  bounds:{MS:[250,350],PN:[200,240],HI:[18,25]},hurdles:{MS:.12,PN:.10,HI:.10},
   origSales:{MS:{2026:303.411,2027:285.0,2028:285.0,2029:285.0,2030:285.0},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},nScen:100,nStoch:100,
-  cons:{rbcFloor:3.5,tacChgFloor:-.15,irr3on:true,irrA:.08,irrB:.15,deYr:5,cumDeYr:12,cumDEFloor:-180,de1Floor:-120},
-  surplusNote:{on:false,amount:150,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
+  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
+  surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
   results:[],years:[],vnbProd:'MS',vnbBasis:'orig',rbcBasis:'orig'};
@@ -376,7 +376,7 @@ function renderCumDEBaseline(){
   var h='<table style="font-size:11px;min-width:600px"><thead><tr><th>Year</th>'+ys.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
   h+='<tr><td>2026-issue cumDE $M (undiscounted)</td>'+ys.map(function(y){var v=bDE[y],hi=v<fl;return'<td style="'+(hi?'color:var(--red);font-weight:700':'')+'">'+fmt(v,1)+'</td>';}).join('')+'</tr>';
   h+='<tr><td style="color:var(--muted)">Floor</td>'+ys.map(function(){return'<td style="color:var(--muted)">'+fmt(fl,1)+'</td>';}).join('')+'</tr>';
-  el.innerHTML=h+'</tbody></table>';
+  el.innerHTML='<div class="hscroll">'+h+'</tbody></table></div>';
 }
 
 /* ---- Frontier (V3 style with stochastic cloud) ---- */

@@ -53,7 +53,7 @@ function buildState(EFENG, dataDir, growth) {
   return {
     ev: ev, ts: ts, surplus: surplus, params: params, years: years,
     baseline: null, origLIF: null, ev2026: null,
-    bounds: { MS: [200, 400], PN: [100, 250], HI: [15, 25] },
+    bounds: { MS: [250, 350], PN: [200, 240], HI: [18, 25] },
     hurdles: { MS: 0.12, PN: 0.10, HI: 0.10 },
     origSales: origSales,
     growth: growth || zeroGrowth(),
@@ -63,8 +63,8 @@ function buildState(EFENG, dataDir, growth) {
     lapseProcSD: { MS: 0.03, PN: 0.02, HI: 0.04 },
     procCorr: { MS: 0.25, PN: 0.50, HI: 0.25 },
     nScen: 100, nStoch: 100,
-    cons: { rbcFloor: 3.5, tacChgFloor: -0.15, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 5, cumDeYr: 12, cumDEFloor: -180, de1Floor: -120 },
-    surplusNote: { on: false, amount: 150, tenor: 10, rate: 0.09, fees: 0.03, startDate: '2026-06-30' },
+    cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.10, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -120 },
+    surplusNote: { on: true, amount: 100, tenor: 10, rate: 0.09, fees: 0.03, startDate: '2026-06-30' },
     results: []
   };
 }
