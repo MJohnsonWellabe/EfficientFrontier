@@ -34,5 +34,17 @@ bit-for-bit against the legacy engine (412 checks, 0 diffs) and the zero-growth 
 identical to the legacy frontier (1700 checks, 0 diffs). Re-verify with `node runner/validate.js`
 plus the zero-growth frontier diff after any engine/frontier edit.
 
+## Local viewing (how Matt runs the viewer — no Node, no Python on his machine)
+The viewer must be served over http (it `fetch`es `data/`; `file://` is blocked). Matt's Windows
+box has neither Node nor Python, so the standing local-deploy method is the **built-in PowerShell
+`HttpListener`** server, run from the **repo root**, then open `http://localhost:8000/viewer/index.html`:
+
+```bat
+powershell -NoProfile -Command "$root=(Get-Location).Path; $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add('http://localhost:8000/'); $l.Start(); Write-Host ('Serving -> http://localhost:8000/viewer/index.html  (Ctrl+C / close window to stop)'); while($l.IsListening){ $c=$l.GetContext(); $p=$c.Request.Url.LocalPath.TrimStart('/'); if([string]::IsNullOrEmpty($p)){$p='index.html'}; $f=Join-Path $root $p; if(Test-Path $f -PathType Leaf){ $b=[System.IO.File]::ReadAllBytes($f); $ext=[System.IO.Path]::GetExtension($f).ToLower(); $m=@{'.html'='text/html';'.js'='text/javascript';'.json'='application/json';'.csv'='text/csv';'.css'='text/css'}; $ct=$m[$ext]; if(-not $ct){$ct='application/octet-stream'}; $c.Response.ContentType=$ct; $c.Response.OutputStream.Write($b,0,$b.Length) } else { $c.Response.StatusCode=404 }; $c.Response.Close() }"
+```
+
+Note: a web server started inside a cloud/remote session is **not reachable** from Matt's browser —
+local viewing always runs on his own machine after `git pull origin main`.
+
 ## Open item
 Per-product stochastic σ for claims and lapse are currently assumed. They are being re-derived from seriatim aggregate A/E ratios (process vs. systematic risk). See `MODEL_CANON.md §6`.
