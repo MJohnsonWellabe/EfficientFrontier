@@ -8,19 +8,21 @@
 
 ## 1. Validated targets (the regression gate)
 
-Standalone VNB basis:
+Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq/maint +1 shift active):
 
 | Product | VNB IRR | VNB NPV |
 |---|---|---|
 | Medicare Supplement (MS) | `0.21938929` | `$633.23M` |
-| Preneed (PN) | `0.14688215` | `$6.574M` |
+| Preneed (PN) | `0.10667571` | `$33.553M` |
 | Hospital Indemnity (HI) | `0.17163078` | `$29.458M` |
 
-MS recalc IRR under workbook scalars: `0.17833333`
+MS recalc IRR under workbook scalars: `0.17763524`
 
 Baseline RBC ratios, 2026–2030: `5.36 / 4.67 / 3.80 / 3.76 / 4.33` (minimum `3.76` in **2029**).
 
-**Rule:** any engine edit must re-produce all of the above to full precision before it is "done." See `BUILD_STANDARDS.md` → Validation gate.
+> **Refresh note (2026-06-13).** The **PN VNB** (`0.10667571 / $33.553M`) and the **MS recalc IRR** (`0.17763524`) were **re-derived from the current `EfficientFrontier-29.html` workbook** and replace the prior transcriptions `0.14688215 / $6.574M` and `0.17833333`, which were stale from an earlier dataset (PN's sales/in-force inputs in -29 differ materially). MS VNB, HI VNB, and all RBC ratios were already exact and are unchanged. All five numbers above now reproduce to full precision via `runner/validate.js`.
+
+**Rule:** any engine edit must re-produce all of the above to full precision before it is "done." Run `node runner/validate.js` — it is the executable form of this gate. See `BUILD_STANDARDS.md` → Validation gate.
 
 ---
 
@@ -70,6 +72,49 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 The per-product σ for claims and lapse currently driving the stochastic engine are **assumed**, not empirical. This is the open thread: deriving them from seriatim **aggregate A/E ratio** distributions (process risk vs. systematic/parameter risk decomposition), per the most recent working session.
 
 ⚠ CONFIRM / TO DO: record the current placeholder σ values here, then replace with empirically derived ones once the seriatim work lands. Note whether the distribution is actually normal (likely not) and what that means for the LHS sampling.
+
+---
+
+## 8. Forward sales growth — scenario draws ONLY (never the baseline)
+
+The forward sales projection compounds each sampled scenario's 2026 anchor by a per-product,
+per-year growth schedule for 2027–2035. This is a **deterministic config assumption**, not a
+sampled/stochastic/LHS dimension — the efficient-frontier sampler still samples only the 2026
+anchors.
+
+- **Where it lives.** `src/frontier.js → mkScalars` (the only changed mechanic). It rewrites
+  `updSales` for the sampled scenario draws and nothing else. With an **all-zero** schedule it
+  reduces to the original flat projection **byte-for-byte**.
+- **Baseline is sacred.** The baseline path (`frontier.js → computeBaseline`, used by the VNB /
+  RBC tabs and the canon §1 gate) **never reads `S.growth`**. No growth setting can move any
+  §1 number. If §1 moves, growth has leaked into the baseline and the change is wrong.
+- **2026 is the anchor.** Year 2026 is the sampled value and is **never** grown; only 2027–2035
+  compound, year over year: `sales[y] = sales[y-1] × (1 + rate[y])`.
+
+**Default schedule** (decimals; editable in the Configuration tab under each product's sales anchor):
+
+| Product | 2027 | 2028 | 2029 | 2030 | 2031–2035 |
+|---|---|---|---|---|---|
+| Medicare Supplement (MS) | 0% | 0% | 0% | 0% | 0% |
+| Preneed (PN) | 10% | 10% | 10% | 6% | 6% |
+| Hospital Indemnity (HI) | 5% | 5% | 5% | 5% | 5% |
+
+**Invariants (both verified 2026-06-13):**
+
+1. **Baseline untouched.** With the default schedule loaded, every MODEL_CANON §1 target
+   reproduces to full precision (`node runner/validate.js`) — identical to a zero-growth load.
+2. **Zero growth = old static frontier.** With all growth at 0%, the decomposed efficient
+   frontier matches the legacy single-file frontier **exactly** (1700 field checks across all
+   100 LHS scenarios and their stochastic draws, 0 diffs — legacy engine + flat sales vs the
+   decomposed engine + `frontier.js` at zero growth). Seeded RNG (`STOCH_SEED = 20260612`)
+   makes this reproducible.
+
+**Expected live behavior.** Under the default schedule, the frontier's *feasible set* and
+*frontier membership* shift (capital/RBC reflect 2027+ growth: e.g. 90→85 feasible, 32→30
+frontier at the 100×100 default). The scatter **coordinates** (2026-issue PVDE / risk) do not
+move, because those axes are 2026-issue-only by existing design and growth is a 2027+ effect that
+flows through the full-book capital path (full-book PVDE and `minRBC` do move). This is correct,
+not a leak.
 
 ---
 
