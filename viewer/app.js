@@ -1196,6 +1196,7 @@ window.downloadEVTemplate=downloadEVTemplate;
 window.downloadTSTemplate=downloadTSTemplate;
 window.downloadSurplusTemplate=downloadSurplusTemplate;
 window.downloadScenCSV=downloadScenCSV;
+window.exportScalars=exportScalars;
 window.updateChart=updateChart;
 window.resetAxisLimits=resetAxisLimits;
 window.renderScenTable=renderScenTable;
