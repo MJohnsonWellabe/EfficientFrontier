@@ -167,7 +167,7 @@ async function runFrontier(){
     var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
     for(var k=0;k<ns;k++){
       var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;   // CRN: same bank for every scenario
-      stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm)});
+      stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm),nier:Object.assign({},nm),nierProc:Object.assign({},_s.nmProc)});
       var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
       if(performance.now()-_yt>40){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';await sleep();_yt=performance.now();}
     }
@@ -200,7 +200,7 @@ async function testCustomScenario(){
   var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
   for(var k=0;k<ns;k++){
     var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;
-    stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm)});
+    stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm),nier:Object.assign({},nm),nierProc:Object.assign({},_s.nmProc)});
     var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
   }
   var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;
@@ -644,11 +644,13 @@ function syncSensSel(selId,scen){
   return el.value||'det';
 }
 function sensScalars(scen,sensId){
-  var claims={MS:1,PN:1,HI:1},lapse={MS:1,PN:1,HI:1};
+  var claims={MS:1,PN:1,HI:1},lapse={MS:1,PN:1,HI:1},nier=null;
   if(scen&&sensId!=='det'&&scen.stochScalars&&scen.stochScalars[+sensId]){
     var sc=scen.stochScalars[+sensId];claims=sc.claims;lapse=sc.lapse;
+    // back-book NIER routed into RBC for the selected stochastic run (combined=sys+proc on new biz; proc on pre-2026)
+    if(sc.nier||sc.nierProc)nier={combined:sc.nier||{},proc:sc.nierProc||{}};
   }
-  return {claims:claims,lapse:lapse};
+  return {claims:claims,lapse:lapse,nier:nier};
 }
 /* ---- sales LEVELS ($M) for a selection (not scalars) ----
    Scenario: the growth-compounded forward projection (updSales from mkScalars).
@@ -677,7 +679,7 @@ function renderVNB(){
   var sensId=syncSensSel('vnbSensSel',scen);
   var vnb,res;
   if(sid==='base'||basis==='orig'||!scen){vnb=S.baseline.vnbs[c].v;res=S.baseline.vnbs[c].r;}
-  else{var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse);vnb=d.recNB[c];res=EFENG.vnbResults(vnb,P.disc);}
+  else{var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);vnb=d.recNB[c];res=EFENG.vnbResults(vnb,P.disc);}
   var statsEl=document.getElementById('vnbStats');
   statsEl.innerHTML='<div class="vnb-stat"><span class="k">IRR</span><span class="v">'+pct(res.irr,2)+'</span></div><div class="vnb-stat"><span class="k">PV Dist. Earnings</span><span class="v">'+fmt(res.npvDE,1)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">PV Premium</span><span class="v">'+fmt(res.npvPremium,0)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">Product / Basis</span><span class="v" style="font-size:14px">'+({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c]+' / '+(basis==='orig'?'Orig':'Recalc')+'</span></div>';
   var vsEl=document.getElementById('vnbSales');
@@ -699,16 +701,16 @@ function renderRBC(){
   var sid=S.sel.scen;
   var scen=currentScen();
   var sensId=syncSensSel('rbcSensSel',scen);
-  var sc=basis==='orig'||sid==='base'||!scen?S.baseline.surplusCalc:(function(){var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse);return d.surplus;})();
+  var sc=basis==='orig'||sid==='base'||!scen?S.baseline.surplusCalc:(function(){var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);return d.surplus;})();
   var minRBC=Math.min.apply(null,[2026,2027,2028,2029,2030].map(function(y){return sc[y]?sc[y].ratio:Infinity;}));
   var minYr=[2026,2027,2028,2029,2030].reduce(function(a,y){return sc[y]&&sc[y].ratio<(sc[a]?sc[a].ratio:Infinity)?y:a;},2026);
   function rsb(k,v){return'<div class="stat-box"><span class="stat-lbl">'+k+'</span><span class="stat-val">'+v+'</span></div>';}
   document.getElementById('rbcShot').innerHTML=rsb('Min RBC 2026–2030',rx(minRBC))+rsb('Binding year',String(minYr))+rsb('2025 anchor',rx(sc[2025]?sc[2025].ratio:null))+rsb('Basis',basis==='orig'?'Baseline':'Scenario');
   var TK=EFENG.TSC_KEYS;
   var h='<thead><tr><th>($M)</th>'+ys.map(function(y){return'<th'+(y>=2026&&y<=2030?' style="background:#fffae8"':'')+'>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
-  ['Medicare Supplement','PreNeed','Hospital Indemnity'].forEach(function(p){h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'">'+p+'</td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?((d.prod[p]||{})[k]||0):null,3)+'</td>';}).join('')+'</tr>';});});
-  h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'">All Other</td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.allOther[k]:null,3)+'</td>';}).join('')+'</tr>';});
-  h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'">All Product (combined)</td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.tot[k]:null,3)+'</td>';}).join('')+'</tr>';});
+  ['Medicare Supplement','PreNeed','Hospital Indemnity'].forEach(function(p){h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'"><span class="pintitle">'+p+'</span></td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?((d.prod[p]||{})[k]||0):null,3)+'</td>';}).join('')+'</tr>';});});
+  h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'"><span class="pintitle">All Other</span></td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.allOther[k]:null,3)+'</td>';}).join('')+'</tr>';});
+  h+='<tr class="hsec"><td colspan="'+(ys.length+1)+'"><span class="pintitle">All Product (combined)</span></td></tr>';TK.forEach(function(k){h+='<tr><td style="padding-left:14px">'+k+'</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.tot[k]:null,3)+'</td>';}).join('')+'</tr>';});
   h+='<tr class="sub"><td style="padding-left:14px">Total pre-covariance</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?TK.reduce(function(s,k){return s+(d.tot[k]||0);},0):null,3)+'</td>';}).join('')+'</tr>';
   h+='<tr class="rule"><td>Post-covariance</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.postCov:null,3)+'</td>';}).join('')+'</tr>';
   h+='<tr><td>Required capital (PostCov × 1.03)</td>'+ys.map(function(y){var d=sc[y];return'<td>'+fmt(d?d.reqCap:null,3)+'</td>';}).join('')+'</tr>';
@@ -725,7 +727,7 @@ function renderEvidence(){
   var sensId=syncSensSel('evSensSel',scen);
   if(!scen){body.innerHTML='<p class="hint">Select a run scenario (after running the frontier) to see its constraint evidence. The baseline has no scenario sales applied.</p>';return;}
   var ss=sensScalars(scen,sensId);
-  var m=buildScen(scen.sales,ss.claims,ss.lapse);
+  var m=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);
   // Stochastic IRRs for C4 (use the scenario's stored stochastic 2026-issue IRRs)
   var stochIRRs=scen.stochIRRs||[];
   var c=S.cons;
@@ -835,20 +837,26 @@ function renderDebug(){
   var sid=S.sel.scen,isBase=sid==='base';
   var scen=currentScen();
   var sensId=syncSensSel('dbgSensSel',scen);
-  var useClaims={MS:1,PN:1,HI:1},useLapse={MS:1,PN:1,HI:1};
-  if(scen&&sensId!=='det'&&scen.stochScalars&&scen.stochScalars[+sensId]){var sc2=scen.stochScalars[+sensId];useClaims=sc2.claims;useLapse=sc2.lapse;}
-  var P=S.params.assum,det=isBase?null:buildScen(scen.sales,useClaims,useLapse);
+  var useClaims={MS:1,PN:1,HI:1},useLapse={MS:1,PN:1,HI:1},useNier=null;
+  if(scen&&sensId!=='det'&&scen.stochScalars&&scen.stochScalars[+sensId]){var sc2=scen.stochScalars[+sensId];useClaims=sc2.claims;useLapse=sc2.lapse;if(sc2.nier||sc2.nierProc)useNier={combined:sc2.nier||{},proc:sc2.nierProc||{}};}
+  var P=S.params.assum,det=isBase?null:buildScen(scen.sales,useClaims,useLapse,useNier);
   function sec(t,bodyFn){return'<div class="dbg-sec"><div class="dbg-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+t+' <span>▾</span></div><div class="dbg-body open">'+bodyFn()+'</div></div>';}
   var html='';
-  /* 1: Scalars - every year for sales, one value for claims/lapse */
+  /* 1: Scalars - per year for sales, claims, lapse and (PN) the NIER shift */
   html+=sec('1 — Sales Levels &amp; Scalars',function(){
     var lv=salesLevels(scen);   // scen=null for baseline -> workbook anchors
-    var h='<p class="hint" style="margin-bottom:10px">Per product: forward sales <strong>level</strong> ($M — the 2026 anchor compounded by the growth schedule) and the per-year sales <strong>scalar</strong> (updated/original). Claims and lapse scalars are one value per product.'+(isBase?' Baseline shown: levels = workbook anchors, all scalars = 1.0.':'')+'</p>';
-    h+='<table><thead><tr><th>Product / Line</th>'+SALES_YEARS.map(function(y){return'<th>'+y+'</th>';}).join('')+'<th>Claims sc.</th><th>Lapse sc.</th></tr></thead><tbody>';
+    function scAt(v,y){return (v==null)?1:(typeof v==='number'?v:(v[y]!=null?v[y]:1));}  // resolve number|per-year-map
+    var h='<p class="hint" style="margin-bottom:10px">Per product, by year: forward sales <strong>level</strong> ($M), the sales <strong>scalar</strong> (updated/original), and the <strong>claims</strong> & <strong>lapse</strong> multipliers (per-year on a shock run; 1.0 deterministic — for Preneed they are equal, the single coupled mortality shock). <strong>NIER shift</strong> is the additive earned-rate shock in bps (Preneed only; its back-book difference flows into the RBC calc).'+(isBase?' Baseline shown: levels = workbook anchors, all scalars = 1.0.':'')+'</p>';
+    h+='<table><thead><tr><th>Product / Line</th>'+SALES_YEARS.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
     PRODS.forEach(function(c){
-      h+='<tr class="sub"><td colspan="'+(SALES_YEARS.length+3)+'">'+PNAME[c]+'</td></tr>';
-      h+='<tr><td style="padding-left:12px">Sales level ($M)</td>'+lv[c].map(function(v){return'<td>'+fmt(v,1)+'</td>';}).join('')+'<td></td><td></td></tr>';
-      h+='<tr class="inc-row"><td style="padding-left:12px">Sales scalar</td>'+SALES_YEARS.map(function(y){var ss=isBase?1:EFENG.salesScalar(det.scalars,c,String(y));return'<td>'+fmt(ss,4)+'</td>';}).join('')+'<td>'+(isBase?fmt(1,4):fmt(det.scalars.claims[PNAME[c]],4))+'</td><td>'+(isBase?fmt(1,4):fmt(det.scalars.lapse[PNAME[c]],4))+'</td></tr>';
+      var claimsV=isBase?1:det.scalars.claims[PNAME[c]], lapseV=isBase?1:det.scalars.lapse[PNAME[c]];
+      var nierV=(useNier&&useNier.combined&&useNier.combined[c])||null;
+      h+='<tr class="sub"><td colspan="'+(SALES_YEARS.length+1)+'"><span class="pintitle">'+PNAME[c]+'</span></td></tr>';
+      h+='<tr><td style="padding-left:12px">Sales level ($M)</td>'+lv[c].map(function(v){return'<td>'+fmt(v,1)+'</td>';}).join('')+'</tr>';
+      h+='<tr class="inc-row"><td style="padding-left:12px">Sales scalar</td>'+SALES_YEARS.map(function(y){return'<td>'+fmt(isBase?1:EFENG.salesScalar(det.scalars,c,String(y)),4)+'</td>';}).join('')+'</tr>';
+      h+='<tr><td style="padding-left:12px">Claims scalar</td>'+SALES_YEARS.map(function(y){return'<td>'+fmt(scAt(claimsV,y),4)+'</td>';}).join('')+'</tr>';
+      h+='<tr><td style="padding-left:12px">Lapse scalar</td>'+SALES_YEARS.map(function(y){return'<td>'+fmt(scAt(lapseV,y),4)+'</td>';}).join('')+'</tr>';
+      h+='<tr class="inc-row"><td style="padding-left:12px">NIER shift (bps)</td>'+SALES_YEARS.map(function(y){return'<td>'+(nierV?fmt(scAt(nierV,y)*10000,1):'—')+'</td>';}).join('')+'</tr>';
     });
     return h+'</tbody></table>';
   });
@@ -861,7 +869,7 @@ function renderDebug(){
       var rL=det?det.recLIF[c]:null;
       var oI=EFENG.evMonthly(S.ev,c,'LivesIssued');
       var rI=det?EFENG.evMonthly(EFENG.recalcEV(S.ev,det.scalars),c,'LivesIssued'):null;
-      h+='<tr class="sub"><td colspan="'+(ys.length+1)+'">'+PNAME[c]+'</td></tr>';
+      h+='<tr class="sub"><td colspan="'+(ys.length+1)+'"><span class="pintitle">'+PNAME[c]+'</span></td></tr>';
       h+='<tr><td style="padding-left:12px">Original in-force</td>'+ys.map(function(y){return'<td>'+fmt(oL[12*(y-2025)],0)+'</td>';}).join('')+'</tr>';
       if(rL)h+='<tr><td style="padding-left:12px">Recalc in-force</td>'+ys.map(function(y){return'<td>'+fmt(rL[12*(y-2025)],0)+'</td>';}).join('')+'</tr>';
       if(rL)h+='<tr class="inc-row"><td style="padding-left:12px">Ratio (recalc/orig)</td>'+ys.map(function(y){var p=12*(y-2025),o=oL[p]||0,r=rL[p]||0;return'<td>'+(Math.abs(o)>1e-9?fmt(r/o,4):'—')+'</td>';}).join('')+'</tr>';
@@ -885,7 +893,7 @@ function renderDebug(){
     var h=pseg+'<table><thead><tr><th>Line ($M) / Year</th>'+ys.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
     rows.forEach(function(r){
       // Section header row for the metric
-      h+='<tr class="sub"><td colspan="'+(ys.length+1)+'">'+r[0]+'</td></tr>';
+      h+='<tr class="sub"><td colspan="'+(ys.length+1)+'"><span class="pintitle">'+r[0]+'</span></td></tr>';
       // Original
       h+='<tr><td style="padding-left:12px">Original</td>'+ys.map(function(y){var o=(oV.annual[r[1]]||{})[y];return'<td>'+fmt(o,1)+'</td>';}).join('')+'</tr>';
       // Updated (recalc)
@@ -942,6 +950,19 @@ function renderDebug(){
     h+='<tr class="rule"><td colspan="3"><strong>'+(Object.keys(failMap).length===0?'✓ All constraints satisfied':'✗ '+Object.keys(failMap).length+' failed')+'</strong></td></tr>';
     return h+'</tbody></table>'+(scen.stochIRRs&&scen.stochIRRs.length?'<p class="hint" style="margin-top:8px">Stochastic runs: '+scen.stochIRRs.length+' — IRR mean '+pct(scen.stochIRRs.reduce(function(a,b){return a+b;},0)/scen.stochIRRs.length,2)+', σ '+pct(stddev(scen.stochIRRs),2)+', P10 '+pct(pctile(scen.stochIRRs,10),2)+', P90 '+pct(pctile(scen.stochIRRs,90),2)+'</p>':'');
   });
+  /* 6: Per-product IRR (return) — scale-invariant; differences vs workbook are trajectory/mix */
+  html+=sec('6 — Per-product IRR (return)',function(){
+    var h='<p class="hint" style="margin-bottom:10px">Per-product IRR is <strong>scale-invariant</strong> — changing a product\'s sales <em>level</em> does not move its IRR. Differences vs the workbook come from the scenario\'s sales <em>trajectory</em> (the growth schedule vs the workbook\'s per-year sales shape), not the recalc engine. The blended <em>portfolio</em> IRR also moves with the sales <em>mix</em>. New-business IRR spans the 2026–2035 cohorts; 2026-issue IRR is the single 2026 cohort that drives the risk axis. (IRR_TAIL failures are MS/HI-driven, not Preneed.)</p>';
+    h+='<table><thead><tr><th>Product</th><th>New-biz IRR<br>(workbook)</th><th>New-biz IRR<br>(scenario)</th><th>2026-issue IRR<br>(workbook)</th><th>2026-issue IRR<br>(scenario)</th></tr></thead><tbody>';
+    var rec=isBase?null:EFENG.recalcEV(S.ev,det.scalars);
+    PRODS.forEach(function(c){
+      var bNB=S.baseline.vnbs[c].r.irr, b26=EFENG.vnbResults(S.baseline.vnb26[c],P.disc).irr;
+      var sNB=isBase?null:EFENG.vnbResults(det.recNB[c],P.disc).irr;
+      var s26=isBase?null:EFENG.vnbResults(EFENG.buildVNB(rec,c,{assum:P},{nMonths:360,iy:'2026'}),P.disc).irr;
+      h+='<tr><td>'+PNAME[c]+'</td><td>'+pct(bNB,2)+'</td><td>'+(sNB!=null?pct(sNB,2):'—')+'</td><td>'+pct(b26,2)+'</td><td>'+(s26!=null?pct(s26,2):'—')+'</td></tr>';
+    });
+    return h+'</tbody></table>';
+  });
   document.getElementById('dbgContent').innerHTML=html;
 }
 
@@ -989,7 +1010,7 @@ function renderCompare(){
   function stat(v){return v==null?'—':(v?'<span class="chip ok">yes</span>':'<span class="chip bad">no</span>');}
   function fails(c){return c==null?'—':(c.length?c.join(', '):'<span class="chip ok">none</span>');}
   function tot(m){return m.sales?(m.sales.MS+m.sales.PN+m.sales.HI):null;}
-  var h='<div class="hscroll"><table class="atbl" style="min-width:580px"><thead><tr><th>Metric</th><th>'+A.label+'</th><th>'+B.label+'</th><th>Δ (B − A)</th></tr></thead><tbody>';
+  var h='<div class="hscroll"><table class="atbl" style="width:100%;table-layout:fixed"><colgroup><col style="width:34%"><col style="width:22%"><col style="width:22%"><col style="width:22%"></colgroup><thead><tr><th>Metric</th><th>'+A.label+'</th><th>'+B.label+'</th><th>Δ (B − A)</th></tr></thead><tbody>';
   h+=sub('Sales — 2026 anchor ($M)');
   h+=rowRaw('Med Supp',A.sales&&A.sales.MS,B.sales&&B.sales.MS,'$',1);
   h+=rowRaw('Preneed',A.sales&&A.sales.PN,B.sales&&B.sales.PN,'$',1);

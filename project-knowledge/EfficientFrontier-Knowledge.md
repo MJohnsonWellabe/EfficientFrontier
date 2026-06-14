@@ -94,6 +94,13 @@ Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq
   **PN-only NIER (investment-yield) shock** — an additive bps level shift on the earned rate, applied in
   `buildVNB` via `opts.nierShift` — the dominant PN risk (default 35 bps sys / 15 bps proc). Both are
   stochastic-path only; deterministic projection, frontier scatter, and §1 are unchanged.
+- **NIER cohort scoping → RBC only (2026-06-14):** the stochastic risk axis stays 2026-issue; the
+  back-book NIER difference flows into RBC/TAC via `buildScen(sales,claims,lapse,nier)` for a selected
+  sensitivity run — process NIER on every issue year (incl pre-2026), systematic on 2026+ new business
+  (two `buildVNB` calls merged). `buildScen` with no `nier` arg is byte-identical → frontier/feasibility/§1
+  unchanged. IRR_TAIL failures are MS/HI-driven, not PN.
+- **Per-product IRR is scale-invariant** — differences vs the workbook are the scenario sales *trajectory*
+  (growth vs the workbook's per-year shape), not the recalc; the portfolio IRR moves with the sales *mix*.
 - **Preneed loading scales per life only** and does not respond to the claims shock.
 - **Surplus TAC under a scenario uses full-book income deltas** (not new-business only):
   MS after-tax income + PN after-tax income + HI distributable earnings, with a one-year-ahead offset.

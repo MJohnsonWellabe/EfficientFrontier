@@ -45,21 +45,24 @@
       while (bank.length < ns) { var b = mk(); bank.push(b); if (bank.length < ns) bank.push(neg(b)); } return bank;
     }
     function shockFromBank(b) {
-      var cm = {}, lm = {}, nm = {}; PRODS.forEach(function (c) {
+      var cm = {}, lm = {}, nm = {}, nmProc = {}; PRODS.forEach(function (c) {
         if (c === 'PN') {
           // Preneed: a death is simultaneously a claim, a reserve release, and a
           // decrement, so claims and termination are ONE coupled mortality shock —
           // cm.PN === lm.PN (claims↑, lives↓, reserve release↑ via the per-life
           // rescale in recalcEV, netting to the thin net-amount-at-risk margin).
-          // The dominant PN risk is a separate additive-bps NIER (earned-rate) shift.
+          // The dominant PN risk is a separate additive-bps NIER (earned-rate) shift,
+          // returned both as combined (systematic+process, for new business 2026+) and
+          // process-only (for the pre-2026 back book — see buildScen NIER→RBC scoping).
           var mS = S.claimsSD.PN || 0, mP = (S.claimsProcSD && S.claimsProcSD.PN) || 0, mAdj = 0.5 * (mS * mS + mP * mP), mmap = {};
-          var niS = (S.nierSD && S.nierSD.PN) || 0, niP = (S.nierProcSD && S.nierProcSD.PN) || 0, nmap = {};
+          var niS = (S.nierSD && S.nierSD.PN) || 0, niP = (S.nierProcSD && S.nierProcSD.PN) || 0, nmap = {}, npmap = {};
           for (var i = 0; i < NYEARS; i++) {
             var y = 2026 + i;
             mmap[y] = Math.exp(b.cs.PN * mS + b.cp.PN[i] * mP - mAdj);
-            nmap[y] = b.ni.PN * niS + b.nip.PN[i] * niP;   // additive level shift on the earned rate (mean 0; adverse = lower)
+            npmap[y] = b.nip.PN[i] * niP;                  // process only (year-to-year reinvestment) — hits every issue year
+            nmap[y] = b.ni.PN * niS + npmap[y];            // systematic + process — hits 2026+ new business
           }
-          cm.PN = mmap; lm.PN = mmap; nm.PN = nmap;
+          cm.PN = mmap; lm.PN = mmap; nm.PN = nmap; nmProc.PN = npmap;
         } else {
           var cS = S.claimsSD[c] || 0, cP = (S.claimsProcSD && S.claimsProcSD[c]) || 0, lS = S.lapseSD[c] || 0, lP = (S.lapseProcSD && S.lapseProcSD[c]) || 0;
           var rho = (S.procCorr && S.procCorr[c]) || 0, rr = Math.sqrt(Math.max(0, 1 - rho * rho));
@@ -72,7 +75,7 @@
           cm[c] = cmap; lm[c] = lmap;
         }
       });
-      return { cm: cm, lm: lm, nm: nm };
+      return { cm: cm, lm: lm, nm: nm, nmProc: nmProc };
     }
 
     // ---- statistics / downside risk ----
@@ -156,10 +159,34 @@
       return { years: base.years, origSales: origSalesOverride, updSales: upd, claims: cl, lapse: lp };
     }
 
-    function buildScen(sales, claims, lapse) {
+    // merge two buildVNB results' annual maps (used to combine cohort-split full-book NIER pieces;
+    // NII/ATI/DE are linear in cohort reserves so the sum equals one all-book valuation)
+    function mergeAnnual(a, b) {
+      var out = { annual: {} }, keys = {};
+      Object.keys(a.annual).forEach(function (k) { keys[k] = 1; }); Object.keys(b.annual).forEach(function (k) { keys[k] = 1; });
+      Object.keys(keys).forEach(function (k) {
+        var m = {}, av = a.annual[k] || {}, bv = b.annual[k] || {}, ys = {};
+        Object.keys(av).forEach(function (y) { ys[y] = 1; }); Object.keys(bv).forEach(function (y) { ys[y] = 1; });
+        Object.keys(ys).forEach(function (y) { m[y] = (av[y] || 0) + (bv[y] || 0); });
+        out.annual[k] = m;
+      });
+      return out;
+    }
+    // nier (optional): { combined:{PN:map}, proc:{PN:map} } — back-book NIER routed into RBC only.
+    // Systematic+process hits 2026+ new business; process-only hits the pre-2026 in-force.
+    // When absent, every call is the original single valuation -> §1 / frontier path unchanged.
+    function buildScen(sales, claims, lapse, nier) {
       var P = S.params.assum, sc = mkScalars(sales, claims, lapse);
       var rec = EFENG.recalcEV(S.ev, sc), recNB = {}, recFull = {}, recLIF = {};
-      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360 }); recFull[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false }); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
+      var nComb = (nier && nier.combined) || null, nProc = (nier && nier.proc) || null;
+      function fullBook(c) {
+        var combShift = nComb && nComb[c], procShift = nProc && nProc[c];
+        if (!combShift && !procShift) return EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false });
+        var nb = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, pnShift: false, nierShift: combShift || null });                        // new business (2026+): systematic+process
+        var inf = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false, iy: '<2026', nierShift: procShift || null }); // pre-2026 in-force: process only
+        return mergeAnnual(nb, inf);
+      }
+      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = fullBook(c); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
       var baseSc = S.baseline.surplusCalc, ys = S.years.filter(function (y) { return y <= 2035; }), sr = {};
       ys.forEach(function (y) {
         var prod = {};
