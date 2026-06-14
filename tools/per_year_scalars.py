@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+HISTORICAL / SUPERSEDED (2026-06-14): this was the one-time programmatic migration of the
+original `EffFrontierEngine_5.xlsx`. The canonical workbook is now the hand-refined, validated
+`EffFrontierEngine_V2Slim.xlsx` (cleaner 2-D product×year Scalars layout); `_5` has been retired.
+Kept only as a reference record of the original migration — do NOT run it against V2Slim.
+
 Restructure the EfficientFrontier workbook's `Scalars` sheet into the online
 engine's systematic + process decomposition (per experience year, 2026-2055) for
 claims, lapse/term and PN NIER, and rewire the recalc tabs to pick them up.
