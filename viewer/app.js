@@ -840,7 +840,7 @@ function renderDebug(){
   var useClaims={MS:1,PN:1,HI:1},useLapse={MS:1,PN:1,HI:1},useNier=null;
   if(scen&&sensId!=='det'&&scen.stochScalars&&scen.stochScalars[+sensId]){var sc2=scen.stochScalars[+sensId];useClaims=sc2.claims;useLapse=sc2.lapse;if(sc2.nier||sc2.nierProc)useNier={combined:sc2.nier||{},proc:sc2.nierProc||{}};}
   var P=S.params.assum,det=isBase?null:buildScen(scen.sales,useClaims,useLapse,useNier);
-  function sec(t,bodyFn){return'<div class="dbg-sec"><div class="dbg-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+t+' <span>▾</span></div><div class="dbg-body open">'+bodyFn()+'</div></div>';}
+  function sec(t,bodyFn){return'<div class="dbg-sec"><div class="dbg-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+t+' <span>▾</span></div><div class="dbg-body open"><div class="hscroll">'+bodyFn()+'</div></div></div>';}
   var html='';
   /* 1: Scalars - per year for sales, claims, lapse and (PN) the NIER shift */
   html+=sec('1 — Sales Levels &amp; Scalars',function(){
