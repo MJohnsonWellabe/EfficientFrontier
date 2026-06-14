@@ -13,6 +13,7 @@ You are working on a **capital deployment / efficient frontier** model for Wella
 - **The HTML app is a thin viewer.** Heavy compute belongs in `runner/`, headless. The viewer computes in-browser using the **same** `src/frontier.js` module the runner uses — one source of compute truth. Don't fork the math.
 - **Data lives in `data/`, not embedded in code.** No gzip+base64 blobs in the HTML.
 - **Default config carries the surplus note ON ($100M).** It flows through TAC, so the viewer's displayed baseline RBC is note-adjusted; `MODEL_CANON §1` RBC stays the no-note engine anchor verified by `runner/validate.js`. Config defaults (bounds/constraints/note) live in three mirrored places — `viewer/index.html` inputs, `viewer/app.js` `S` init, and `runner/defaults.js` — keep them in sync. See `MODEL_CANON §5`.
+- **Push everything to `main`, always.** Matt's standing instruction (2026-06-14): commit and push all work directly to `main` so his `git pull origin main` / GitHub-download workflow always has the latest. No feature-branch/PR dance unless he asks.
 
 ## Architecture (current state — decomposition complete)
 - `src/` — the engine, decomposed into UMD modules (browser `window.EFENG` + Node `module.exports`):
