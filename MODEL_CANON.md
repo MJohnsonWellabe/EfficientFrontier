@@ -147,3 +147,15 @@ not a leak.
 `Configuration` · `Efficient Frontier` (scatter + table) · `VNB by Product` · `RBC & Surplus` · `Debug` (peer-review sections) · `Methodology`
 
 The HTML app is a **viewer**, not the compute environment. Heavy runs go through the headless `runner/` (see `BUILD_STANDARDS.md`).
+
+---
+
+## 9. Excel workbook — per-year systematic/process scalar parity (validation harness)
+
+To let `EffFrontierEngine_5.xlsx` reproduce a *seeded online scenario* in real Excel (the sandbox can't recompute the workbook), the `Scalars` sheet was restructured to mirror the online engine's **systematic + process** decomposition, and the recalc tabs were rewired to pick the scalars up **per experience year (2026–2055)**. Built by `tools/per_year_scalars.py` (idempotent); the matching scenario export is `runner/export-scalars.js`.
+
+- **Scalars layout** (sales block rows 1–14 unchanged): systematic (single cell, identity-default) `C17/18/19` claims, `C22/23/24` term (`C23==C18`), `C26` NIER(PN, bps); process (per year `C:AF`, identity-default) claims `29/30/31`, term `34/35/36` (`row35==row30`), NIER(PN) `39`.
+- **Combination in the recalc formulas:** `claims_eff[y] = C17·claims_proc[y]`; `term_eff[y] = C22·term_proc[y]`; NIER **new business** (`VNB Recalc`, `B="N"`) `= C26 + nier_proc[y]`; NIER **back book** (`EV Recalc`, `B="E"`) `= nier_proc[y]`. This matches the online cohort scoping (systematic+process for 2026+ new business, process-only for the pre-2026 back book).
+- **Why it factors cleanly:** the online per-year multiplier `exp(z_sys·σ_sys + z_proc[y]·σ_proc − ½(σ_sys²+σ_proc²))` equals `systematic × process[y]` exactly (verified to machine precision in `export-scalars.js`). Claims/term apply by experience year uniformly across cohorts; only NIER carries the cohort split.
+- **Flat-equivalence invariant:** with identity defaults (1 / 1 / 0) every `INDEX/MATCH` returns the identity, so the recalc reproduces the baseline byte-for-byte — the workbook's existing RBC chain (required-capital charges scaled by recalc-vs-baseline LivesInForce, **C2 by IncClaims**; TAC = baseline + VNB-side Δ + EV-side Δ; surplus-note row 54) is untouched. Verified: claims/lapse cells bit-identical pre/post (pycel `cycles=False`); all 32,673 rewrites are exactly the documented token swap; JS §1 gate still green.
+- **NIER note (supersedes the old `Scalars!B30` "online-only"):** the cohort split IS now in Excel via the VNB(new)/EV(back-book) tab separation.
