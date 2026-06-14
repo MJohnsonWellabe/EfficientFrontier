@@ -960,22 +960,30 @@ function renderDebug(){
     });
     return h+'</tbody></table>';
   });
-  /* 3: Income comparison - toggleable by product, stacked orig/updated/ratio per metric */
+  /* 3: Income comparison - toggle by product AND issue-year cohort (incl pre-2026 back book) */
   var dbgProd=window._dbgProd||'MS';
+  var dbgIY=window._dbgIY||'2026';
   html+=sec('3 — Income Comparison',function(){
     var ys=[2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040];
-    var pseg='<div style="display:flex;gap:6px;margin-bottom:10px">'+PRODS.map(function(c){return'<button class="btn '+(dbgProd===c?'':'ghost')+' sm" onclick="window._dbgProd=\''+c+'\';renderDebug()">'+(({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c])+'</button>';}).join('')+'</div>';
-    var oV=S.baseline.vnbs[dbgProd].v,rV=det?det.recNB[dbgProd]:null;
+    var pseg='<div style="display:flex;gap:6px;margin-bottom:8px">'+PRODS.map(function(c){return'<button class="btn '+(dbgProd===c?'':'ghost')+' sm" onclick="window._dbgProd=\''+c+'\';renderDebug()">'+(({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c])+'</button>';}).join('')+'</div>';
+    var iyList=['<2026','2026','2027','2028','2029','2030','2031','2032','2033','2034','2035','all'];
+    var iyLab=function(iy){return iy==='all'?'All new biz':(iy==='<2026'?'Pre-2026':iy);};
+    var iyseg='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'+iyList.map(function(iy){return'<button class="btn '+(dbgIY===iy?'':'ghost')+' sm" onclick="window._dbgIY=\''+iy+'\';renderDebug()">'+iyLab(iy)+'</button>';}).join('')+'</div>';
+    var nierC=(useNier&&useNier.combined&&useNier.combined[dbgProd])||null;
+    var nierP=(useNier&&useNier.proc&&useNier.proc[dbgProd])||null;
+    var baseOpts,scenOpts;
+    if(dbgIY==='all'){baseOpts={nMonths:360};scenOpts={nMonths:360,nierShift:nierC};}
+    else if(dbgIY==='<2026'){baseOpts={nMonths:360,allBook:true,iy:'<2026'};scenOpts={nMonths:360,allBook:true,iy:'<2026',nierShift:nierP};}
+    else{baseOpts={nMonths:360,iy:dbgIY};scenOpts={nMonths:360,iy:dbgIY,nierShift:nierC};}
+    var oV=EFENG.buildVNB(S.ev,dbgProd,{assum:P},baseOpts);
+    var rV=det?EFENG.buildVNB(EFENG.recalcEV(S.ev,det.scalars),dbgProd,{assum:P},scenOpts):null;
     var rows=[['Premium','Premium'],['NII','NII'],['Claims','Claims'],['Other Benefits','OthBen'],['Pre-tax income','PTI'],['After-tax income','ATI'],['Change in TS','ChgTS'],['Distributable Earnings','DE']];
-    var h=pseg+'<table><thead><tr><th>Line ($M) / Year</th>'+ys.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
+    var lbl=dbgIY==='all'?'all new-business cohorts (2026-2035)':(dbgIY==='<2026'?'the pre-2026 back book (existing in-force)':dbgIY+'-issue cohort');
+    var h=pseg+iyseg+'<p class="hint" style="margin-bottom:8px">Showing <strong>'+lbl+'</strong> — original (baseline) vs updated (selected scenario/run), and the ratio, by calendar year.</p><table><thead><tr><th>Line ($M) / Year</th>'+ys.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
     rows.forEach(function(r){
-      // Section header row for the metric
       h+='<tr class="sub"><td colspan="'+(ys.length+1)+'"><span class="pintitle">'+r[0]+'</span></td></tr>';
-      // Original
       h+='<tr><td style="padding-left:12px">Original</td>'+ys.map(function(y){var o=(oV.annual[r[1]]||{})[y];return'<td>'+fmt(o,1)+'</td>';}).join('')+'</tr>';
-      // Updated (recalc)
       h+='<tr><td style="padding-left:12px">Updated</td>'+ys.map(function(y){var rv=rV?(rV.annual[r[1]]||{})[y]:null;return'<td>'+(rv!=null?fmt(rv,1):'—')+'</td>';}).join('')+'</tr>';
-      // Ratio (updated / original)
       h+='<tr class="inc-row"><td style="padding-left:12px">Ratio (upd/orig)</td>'+ys.map(function(y){var o=(oV.annual[r[1]]||{})[y]||0,rv=rV?((rV.annual[r[1]]||{})[y]||0):null;return'<td>'+(rv!=null&&Math.abs(o)>1e-9?fmt(rv/o,4):'—')+'</td>';}).join('')+'</tr>';
     });
     return h+'</tbody></table>';
@@ -1026,19 +1034,6 @@ function renderDebug(){
     CONS_FULL.forEach(function(pair){var f=failMap[pair[0]];h+='<tr><td style="font-size:12px">'+pair[1]+'</td><td>'+(f?'<span class="chip bad">FAIL</span>':'<span class="chip ok">PASS</span>')+'</td><td style="font-family:var(--mono);font-size:11px">'+(f?f.detail:'—')+'</td></tr>';});
     h+='<tr class="rule"><td colspan="3"><strong>'+(Object.keys(failMap).length===0?'✓ All constraints satisfied':'✗ '+Object.keys(failMap).length+' failed')+'</strong></td></tr>';
     return h+'</tbody></table>'+(scen.stochIRRs&&scen.stochIRRs.length?'<p class="hint" style="margin-top:8px">Stochastic runs: '+scen.stochIRRs.length+' — IRR mean '+pct(scen.stochIRRs.reduce(function(a,b){return a+b;},0)/scen.stochIRRs.length,2)+', σ '+pct(stddev(scen.stochIRRs),2)+', P10 '+pct(pctile(scen.stochIRRs,10),2)+', P90 '+pct(pctile(scen.stochIRRs,90),2)+'</p>':'');
-  });
-  /* 6: Per-product IRR (return) — scale-invariant; differences vs workbook are trajectory/mix */
-  html+=sec('6 — Per-product IRR (return)',function(){
-    var h='<p class="hint" style="margin-bottom:10px">Per-product IRR is <strong>scale-invariant</strong> — changing a product\'s sales <em>level</em> does not move its IRR. Differences vs the workbook come from the scenario\'s sales <em>trajectory</em> (the growth schedule vs the workbook\'s per-year sales shape), not the recalc engine. The blended <em>portfolio</em> IRR also moves with the sales <em>mix</em>. New-business IRR spans the 2026–2035 cohorts; 2026-issue IRR is the single 2026 cohort that drives the risk axis. (IRR_TAIL failures are MS/HI-driven, not Preneed.)</p>';
-    h+='<table><thead><tr><th>Product</th><th>New-biz IRR<br>(workbook)</th><th>New-biz IRR<br>(scenario)</th><th>2026-issue IRR<br>(workbook)</th><th>2026-issue IRR<br>(scenario)</th></tr></thead><tbody>';
-    var rec=isBase?null:EFENG.recalcEV(S.ev,det.scalars);
-    PRODS.forEach(function(c){
-      var bNB=S.baseline.vnbs[c].r.irr, b26=EFENG.vnbResults(S.baseline.vnb26[c],P.disc).irr;
-      var sNB=isBase?null:EFENG.vnbResults(det.recNB[c],P.disc).irr;
-      var s26=isBase?null:EFENG.vnbResults(EFENG.buildVNB(rec,c,{assum:P},{nMonths:360,iy:'2026'}),P.disc).irr;
-      h+='<tr><td>'+PNAME[c]+'</td><td>'+pct(bNB,2)+'</td><td>'+(sNB!=null?pct(sNB,2):'—')+'</td><td>'+pct(b26,2)+'</td><td>'+(s26!=null?pct(s26,2):'—')+'</td></tr>';
-    });
-    return h+'</tbody></table>';
   });
   document.getElementById('dbgContent').innerHTML=html;
 }

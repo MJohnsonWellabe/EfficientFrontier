@@ -197,7 +197,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 
 <div class="card">
   <h2 class="sh">3 — Sales, Hurdle Rates &amp; Stochastic Parameters</h2>
-  <div class="g3">
+  <div class="g2">
     <div>
       <div class="hint" style="margin-bottom:10px">Sales scenario range ($M/yr) — LHS samples within these bounds</div>
       <label class="f"><span class="lb">Medicare Supplement — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_MS_lo" value="250" step="10"><input type="number" id="b_MS_hi" value="350" step="10"></div></label>
@@ -210,7 +210,8 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       <label class="f"><span class="lb">Preneed</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="h_PN" value="10" step="0.5"><span>%</span></div></label>
       <label class="f"><span class="lb">Hospital Indemnity</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="h_HI" value="10" step="0.5"><span>%</span></div></label>
     </div>
-    <div>
+  </div>
+  <div style="margin-top:18px">
       <div class="hint" style="margin-bottom:8px">Stochastic σ (%) per product, split into <strong>systematic</strong> (a persistent assumption/pricing miss — one draw held across all 30 years) and <strong>process</strong> (random year-to-year fluctuation — redrawn each year, diversifies over time). Set process to 0 for a pure single-shock model. <strong>Preneed</strong> is pre-funded, so a death is at once a claim, a reserve release, and a decrement — its claims σ is a single <strong>mortality</strong> shock that drives claims, termination and reserve release together (netting to the net-amount-at-risk margin); PN's dominant risk is the separate NIER shock below. See the Risk Calibration sections in Methodology.</div>
       <table style="font-size:12px;width:100%;border-collapse:collapse">
         <thead><tr><th style="text-align:left;padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Product</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Claims /<br>mort. syst.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Claims /<br>mort. proc.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Term<br>syst.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Term<br>proc.</th></tr></thead>
@@ -226,7 +227,6 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       </div>
       <p class="hint" style="margin-top:-4px">Minimum 50 draws — the C4 IRR-tail probability is estimated from these draws, and fewer than ~50 gives a coarse, unstable tail estimate. 100 is recommended.</p>
     </div>
-  </div>
 </div>
 
 <div class="card">
