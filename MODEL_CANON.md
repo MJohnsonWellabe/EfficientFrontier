@@ -31,6 +31,8 @@ Baseline RBC ratios, 2026–2030: `5.36 / 4.67 / 3.80 / 3.76 / 4.33` (minimum `3
 These are choices you made deliberately. They are not up for "cleanup."
 
 - **Persistency as a lapse-rate shock.** Shocked retention = `1 − (1 − base retention) × lapse_scalar`, bounded to `[0, 1]`, applied **from a policy's second year onward**.
+- **Preneed mortality is a single coupled stochastic shock (2026-06-14).** Preneed is pre-funded, so a death is at once a claim, a reserve release, and a decrement — modeling a termination shock (or a gross-claims shock) alone is wrong. In `frontier.js → shockFromBank`, PN sets **`cm.PN === lm.PN`** from one mortality draw (PN's `claimsSD`/`claimsProcSD` *are* the mortality σ): claims rise, lives fall, and the per-life reserve rescale in `recalcEV` releases those lives' reserves — the strain netting to the **net amount at risk** (large for young business, shrinking as reserves build). PN therefore has **no separate lapse σ and no claims↔lapse ρ** (`procCorr.PN` retired; ρ = 1 by construction). This is **stochastic-path only** — `recalcEV`/`buildVNB` formulas are unchanged and the deterministic projection, the frontier scatter, and **§1** are untouched.
+- **Preneed-only NIER (investment-yield) shock (2026-06-14)** — the dominant PN risk. An **additive basis-point level shift** on the earned rate (systematic + process), drawn in `shockFromBank` (`nm.PN`) and applied in `buildVNB` via `opts.nierShift` (`nier = assumLookup(...) + shift`). **Inert when not passed** (MS/HI and all deterministic/§1 paths), so §1 is unaffected. Defaults **35 bps systematic / 15 bps process** (see §6). The PN NIER bank draws are **appended after** the existing per-product draws so the MS/HI/claims/lapse RNG stream is bit-identical.
 - **Preneed loading scales per life only** and does **not** respond to the claims shock.
 - **Surplus TAC under a scenario uses full-book income deltas** (not new-business only): `MS after-tax income + PN after-tax income + HI distributable earnings`, with a **one-year-ahead offset**.
 - **Required capital = PostCov × 1.03**, with **no** additional conservatism factor.
@@ -82,7 +84,16 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 
 The per-product σ for claims and lapse currently driving the stochastic engine are **assumed**, not empirical. This is the open thread: deriving them from seriatim **aggregate A/E ratio** distributions (process risk vs. systematic/parameter risk decomposition), per the most recent working session.
 
-⚠ CONFIRM / TO DO: record the current placeholder σ values here, then replace with empirically derived ones once the seriatim work lands. Note whether the distribution is actually normal (likely not) and what that means for the LHS sampling.
+Current placeholder σ (Configuration-tab / `runner/defaults.js` defaults, all editable):
+
+| Product | Claims/mortality σ (sys / proc) | Termination σ (sys / proc) | Claims↔term ρ | NIER shift σ (sys / proc) |
+|---|---|---|---|---|
+| Medicare Supplement | 4.0% / 3.0% | 6.5% / 3.0% | 0.25 | — |
+| Preneed | **3.5% / 2.0%** (mortality, coupled) | *= mortality (coupled)* | *n/a (ρ=1)* | **35 bps / 15 bps** |
+| Hospital Indemnity | 5.5% / 4.0% | 7.0% / 4.0% | 0.25 | — |
+
+- **PN NIER σ (35 bps sys / 15 bps proc) is research-grounded, not a placeholder** (2026-06-14): industry net yield on invested assets ≈ 4.57% (YE2024) with ~15 bps/yr book-yield moves → process ≈ 15 bps; preneed pricing interest/discount adverse-deviation margins of 20–50 bps plus the multi-year drift → systematic ≈ 35 bps. Additive bps level shift (not lognormal). Sources: NEAM 2024 U.S. Life Industry Investment Highlights; NAIC 2024 life industry commentary / capital-markets asset-mix YE2024; preneed insurer SEC filings. Documented in the Methodology tab's *Preneed NIER shock* calibration.
+- ⚠ CONFIRM / TO DO: the claims/termination A/E σ for MS/HI (and the PN mortality σ) remain assumed — replace with empirically derived ones once the seriatim work lands. Note whether the distribution is actually normal (likely not) and what that means for the LHS sampling.
 
 ---
 

@@ -31,7 +31,7 @@ function runFrontier(S, F) {
     var sIRRs = [], sNPVs = [], sDD = [];
     for (var k = 0; k < ns; k++) {
       var _s = F.shockFromBank(BANK[k]);
-      var sm = F.stochMetrics(sales, _s.cm, _s.lm);
+      var sm = F.stochMetrics(sales, _s.cm, _s.lm, _s.nm);
       sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd);
     }
     var dr = F.downsideRisk(sNPVs, sDD, det.npv26), risk = dr.risk;

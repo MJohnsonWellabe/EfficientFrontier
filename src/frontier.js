@@ -37,23 +37,42 @@
     function nvec(n) { var a = []; for (var i = 0; i < n; i++)a.push(nrand()); return a; }
     function buildShockBank(ns) {
       var bank = [];
-      function mk() { var d = { cs: {}, ls: {}, cp: {}, lp: {} }; PRODS.forEach(function (c) { d.cs[c] = nrand(); d.ls[c] = nrand(); d.cp[c] = nvec(NYEARS); d.lp[c] = nvec(NYEARS); }); return d; }
-      function neg(d) { var e = { cs: {}, ls: {}, cp: {}, lp: {} }; PRODS.forEach(function (c) { e.cs[c] = -d.cs[c]; e.ls[c] = -d.ls[c]; e.cp[c] = d.cp[c].map(function (z) { return -z; }); e.lp[c] = d.lp[c].map(function (z) { return -z; }); }); return e; }
+      // PN NIER (investment-yield) draws are appended AFTER the existing per-product
+      // draws so the MS/HI/claims/lapse RNG stream is unchanged bit-for-bit; only the
+      // new PN NIER dimension consumes extra entropy at the tail.
+      function mk() { var d = { cs: {}, ls: {}, cp: {}, lp: {}, ni: {}, nip: {} }; PRODS.forEach(function (c) { d.cs[c] = nrand(); d.ls[c] = nrand(); d.cp[c] = nvec(NYEARS); d.lp[c] = nvec(NYEARS); }); d.ni.PN = nrand(); d.nip.PN = nvec(NYEARS); return d; }
+      function neg(d) { var e = { cs: {}, ls: {}, cp: {}, lp: {}, ni: {}, nip: {} }; PRODS.forEach(function (c) { e.cs[c] = -d.cs[c]; e.ls[c] = -d.ls[c]; e.cp[c] = d.cp[c].map(function (z) { return -z; }); e.lp[c] = d.lp[c].map(function (z) { return -z; }); }); e.ni.PN = -d.ni.PN; e.nip.PN = d.nip.PN.map(function (z) { return -z; }); return e; }
       while (bank.length < ns) { var b = mk(); bank.push(b); if (bank.length < ns) bank.push(neg(b)); } return bank;
     }
     function shockFromBank(b) {
-      var cm = {}, lm = {}; PRODS.forEach(function (c) {
-        var cS = S.claimsSD[c] || 0, cP = (S.claimsProcSD && S.claimsProcSD[c]) || 0, lS = S.lapseSD[c] || 0, lP = (S.lapseProcSD && S.lapseProcSD[c]) || 0;
-        var rho = (S.procCorr && S.procCorr[c]) || 0, rr = Math.sqrt(Math.max(0, 1 - rho * rho));
-        var cAdj = 0.5 * (cS * cS + cP * cP), lAdj = 0.5 * (lS * lS + lP * lP), cmap = {}, lmap = {};
-        for (var i = 0; i < NYEARS; i++) {
-          var y = 2026 + i;
-          cmap[y] = Math.exp(b.cs[c] * cS + b.cp[c][i] * cP - cAdj);
-          lmap[y] = Math.exp(b.ls[c] * lS + (rho * b.cp[c][i] + rr * b.lp[c][i]) * lP - lAdj);
+      var cm = {}, lm = {}, nm = {}; PRODS.forEach(function (c) {
+        if (c === 'PN') {
+          // Preneed: a death is simultaneously a claim, a reserve release, and a
+          // decrement, so claims and termination are ONE coupled mortality shock —
+          // cm.PN === lm.PN (claims↑, lives↓, reserve release↑ via the per-life
+          // rescale in recalcEV, netting to the thin net-amount-at-risk margin).
+          // The dominant PN risk is a separate additive-bps NIER (earned-rate) shift.
+          var mS = S.claimsSD.PN || 0, mP = (S.claimsProcSD && S.claimsProcSD.PN) || 0, mAdj = 0.5 * (mS * mS + mP * mP), mmap = {};
+          var niS = (S.nierSD && S.nierSD.PN) || 0, niP = (S.nierProcSD && S.nierProcSD.PN) || 0, nmap = {};
+          for (var i = 0; i < NYEARS; i++) {
+            var y = 2026 + i;
+            mmap[y] = Math.exp(b.cs.PN * mS + b.cp.PN[i] * mP - mAdj);
+            nmap[y] = b.ni.PN * niS + b.nip.PN[i] * niP;   // additive level shift on the earned rate (mean 0; adverse = lower)
+          }
+          cm.PN = mmap; lm.PN = mmap; nm.PN = nmap;
+        } else {
+          var cS = S.claimsSD[c] || 0, cP = (S.claimsProcSD && S.claimsProcSD[c]) || 0, lS = S.lapseSD[c] || 0, lP = (S.lapseProcSD && S.lapseProcSD[c]) || 0;
+          var rho = (S.procCorr && S.procCorr[c]) || 0, rr = Math.sqrt(Math.max(0, 1 - rho * rho));
+          var cAdj = 0.5 * (cS * cS + cP * cP), lAdj = 0.5 * (lS * lS + lP * lP), cmap = {}, lmap = {};
+          for (var i = 0; i < NYEARS; i++) {
+            var y = 2026 + i;
+            cmap[y] = Math.exp(b.cs[c] * cS + b.cp[c][i] * cP - cAdj);
+            lmap[y] = Math.exp(b.ls[c] * lS + (rho * b.cp[c][i] + rr * b.lp[c][i]) * lP - lAdj);
+          }
+          cm[c] = cmap; lm[c] = lmap;
         }
-        cm[c] = cmap; lm[c] = lmap;
       });
-      return { cm: cm, lm: lm };
+      return { cm: cm, lm: lm, nm: nm };
     }
 
     // ---- statistics / downside risk ----
@@ -175,9 +194,9 @@
       };
     }
 
-    function stochMetrics(sales, claims, lapse) {
+    function stochMetrics(sales, claims, lapse, nier) {
       var P = S.params.assum, sc = mkScalars(sales, claims, lapse), rec = EFENG.recalcEV(S.ev2026 || S.ev, sc), de = [];
-      PRODS.forEach(function (c) { var v = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iy: '2026' }); for (var y = 2026; y <= 2055; y++) { de[y - 2026] = (de[y - 2026] || 0) + (v.annual.DE[y] || 0); } });
+      PRODS.forEach(function (c) { var v = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iy: '2026', nierShift: (nier && nier[c]) || null }); for (var y = 2026; y <= 2055; y++) { de[y - 2026] = (de[y - 2026] || 0) + (v.annual.DE[y] || 0); } });
       var cum = 0, dd = 0; for (var t = 0; t < de.length; t++) { cum += (de[t] || 0); if (cum < dd) dd = cum; }
       return { irr: EFENG.irr(de), npv: EFENG.npv(P.disc, de), dd: dd };
     }

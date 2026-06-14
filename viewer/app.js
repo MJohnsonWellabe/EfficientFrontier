@@ -2,7 +2,9 @@
 var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart:null,
   bounds:{MS:[250,350],PN:[200,240],HI:[18,25]},hurdles:{MS:.12,PN:.10,HI:.10},
   origSales:{MS:{2026:303.411,2027:285.0,2028:285.0,2029:285.0,2030:285.0},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
-  claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},nScen:100,nStoch:100,
+  claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
+  nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
+  nScen:100,nStoch:100,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
   surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
@@ -164,9 +166,9 @@ async function runFrontier(){
     var det=buildScen(sales,mc,ml);
     var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
     for(var k=0;k<ns;k++){
-      var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm;   // CRN: same bank for every scenario
+      var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;   // CRN: same bank for every scenario
       stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm)});
-      var sm=stochMetrics(sales,cm,lm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
+      var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
       if(performance.now()-_yt>40){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';await sleep();_yt=performance.now();}
     }
     var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;   // Step 3: CTE-90 downside shortfall ($M)
@@ -197,9 +199,9 @@ async function testCustomScenario(){
   var det=buildScen(sales,mc,ml);
   var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
   for(var k=0;k<ns;k++){
-    var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm;
+    var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;
     stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm)});
-    var sm=stochMetrics(sales,cm,lm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
+    var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
   }
   var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;
   var fails=evalCons(det,{irrs:sIRRs});
@@ -287,6 +289,8 @@ function readInputs(){
   S.cons={rbcFloor:g('c_rbc'),tacChgFloor:g('c_tacchg')/100,irr3on:(document.getElementById('c_irr3on')||{}).checked,irrA:g('c_irra')/100,irrB:g('c_irrb')/100,deYr:Math.round(g('c_deyr')),cumDeYr:Math.round(g('c_cumdeyr')),cumDEFloor:g('c_cumfloor'),de1Floor:g('c_de1floor')};
   readSurplusNote();
   PRODS.forEach(function(c){S.claimsSD[c]=+(document.getElementById('cs_'+c)||{value:4}).value/100||0;S.claimsProcSD[c]=+(document.getElementById('cs_proc_'+c)||{value:3}).value/100||0;S.lapseSD[c]=+(document.getElementById('ls_'+c)||{value:6.5}).value/100||0;S.lapseProcSD[c]=+(document.getElementById('ls_proc_'+c)||{value:3}).value/100||0;S.procCorr[c]=Math.max(0,Math.min(0.95,+(document.getElementById('rho_'+c)||{value:0}).value||0));});
+  // Preneed-only NIER (investment-yield) shock σ, entered in basis points -> rate units. PN claims σ above IS the mortality σ (drives the coupled claims+decrement shock); PN lapse σ / ρ are unused.
+  S.nierSD.PN=Math.max(0,+(document.getElementById('ni_PN')||{value:35}).value)/10000||0;S.nierProcSD.PN=Math.max(0,+(document.getElementById('ni_proc_PN')||{value:15}).value)/10000||0;
   var P=S.params.assum;P.tax=g('a_tax')/100;P.disc=g('a_disc')/100;P.inflation=g('a_infl')/100;P.inflStart=Math.round(g('a_inflyr'));
   document.querySelectorAll('.assum-inp').forEach(function(inp){var p=inp.dataset.prod,k=inp.dataset.kind,i=+inp.dataset.idx,v=+inp.value||0;if(P.perProduct&&P.perProduct[p]&&P.perProduct[p][k])P.perProduct[p][k][i]=(k==='NIER'?v/100:v);});
   // origSales from per-year table
@@ -320,11 +324,20 @@ function buildUI(){
   // systematic (persistent) + process (annual) σ defaults — see Risk Calibration sections
   var CSDEF={MS:4,PN:3.5,HI:5.5},CPDEF={MS:3,PN:2,HI:4},LSDEF={MS:6.5,PN:4.5,HI:7},LPDEF={MS:3,PN:2,HI:4};
   var SI='style="width:48px;font-family:var(--mono);font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;text-align:right"';
-  var stoch='';PRODS.forEach(function(c){stoch+='<tr><td>'+({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c]+'</td>';
-    stoch+='<td><input type="number" id="cs_'+c+'" value="'+CSDEF[c]+'" step="0.5" '+SI+'></td>';
-    stoch+='<td><input type="number" id="cs_proc_'+c+'" value="'+CPDEF[c]+'" step="0.5" '+SI+'></td>';
-    stoch+='<td><input type="number" id="ls_'+c+'" value="'+LSDEF[c]+'" step="0.5" '+SI+'></td>';
-    stoch+='<td><input type="number" id="ls_proc_'+c+'" value="'+LPDEF[c]+'" step="0.5" '+SI+'></td></tr>';
+  var stoch='';PRODS.forEach(function(c){
+    if(c==='PN'){
+      // Preneed: claims σ IS the mortality σ — one coupled shock drives claims, decrement
+      // AND reserve release together. Term columns are coupled (not independent inputs).
+      stoch+='<tr><td>Preneed<br><span style="font-size:9px;color:var(--muted)">(mortality)</span></td>';
+      stoch+='<td><input type="number" id="cs_PN" value="'+CSDEF.PN+'" step="0.5" '+SI+'></td>';
+      stoch+='<td><input type="number" id="cs_proc_PN" value="'+CPDEF.PN+'" step="0.5" '+SI+'></td>';
+      stoch+='<td colspan="2" style="font-size:9px;color:var(--muted);text-align:center;line-height:1.35">claims, decrement &amp;<br>reserve release coupled<br>to this mortality shock</td></tr>';
+    }else{stoch+='<tr><td>'+({MS:'Med Supp',HI:'Hosp Ind'})[c]+'</td>';
+      stoch+='<td><input type="number" id="cs_'+c+'" value="'+CSDEF[c]+'" step="0.5" '+SI+'></td>';
+      stoch+='<td><input type="number" id="cs_proc_'+c+'" value="'+CPDEF[c]+'" step="0.5" '+SI+'></td>';
+      stoch+='<td><input type="number" id="ls_'+c+'" value="'+LSDEF[c]+'" step="0.5" '+SI+'></td>';
+      stoch+='<td><input type="number" id="ls_proc_'+c+'" value="'+LPDEF[c]+'" step="0.5" '+SI+'></td></tr>';
+    }
   });
   document.getElementById('stochTbl').innerHTML=stoch;
   document.querySelectorAll('.assum-inp').forEach(function(el){el.addEventListener('change',function(){computeBaseline();});});

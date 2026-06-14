@@ -62,6 +62,10 @@ function buildState(EFENG, dataDir, growth) {
     lapseSD: { MS: 0.065, PN: 0.045, HI: 0.07 },
     lapseProcSD: { MS: 0.03, PN: 0.02, HI: 0.04 },
     procCorr: { MS: 0.25, PN: 0.50, HI: 0.25 },
+    // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc). PN claimsSD above is its mortality σ
+    // (drives the coupled claims+decrement+reserve-release shock); PN lapseSD/procCorr are unused.
+    nierSD: { MS: 0, PN: 0.0035, HI: 0 },
+    nierProcSD: { MS: 0, PN: 0.0015, HI: 0 },
     nScen: 100, nStoch: 100,
     cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.10, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -120 },
     surplusNote: { on: true, amount: 100, tenor: 10, rate: 0.09, fees: 0.03, startDate: '2026-06-30' },

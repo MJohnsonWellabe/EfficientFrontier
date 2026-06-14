@@ -87,6 +87,13 @@ Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq
 **Directed mechanics (deliberate design):**
 - **Persistency as a lapse-rate shock:** shocked retention = `1 − (1 − base retention) × lapse_scalar`,
   bounded `[0,1]`, applied from a policy's second year onward.
+- **Preneed mortality = one coupled stochastic shock (2026-06-14):** PN is pre-funded, so a death is at
+  once a claim, a reserve release, and a decrement. `shockFromBank` sets `cm.PN === lm.PN` from a single
+  mortality draw (PN's claims σ *is* the mortality σ) → claims↑, lives↓, reserve release↑, netting to the
+  net amount at risk. PN has no separate lapse σ / no claims↔lapse ρ (ρ=1 by construction). Plus a
+  **PN-only NIER (investment-yield) shock** — an additive bps level shift on the earned rate, applied in
+  `buildVNB` via `opts.nierShift` — the dominant PN risk (default 35 bps sys / 15 bps proc). Both are
+  stochastic-path only; deterministic projection, frontier scatter, and §1 are unchanged.
 - **Preneed loading scales per life only** and does not respond to the claims shock.
 - **Surplus TAC under a scenario uses full-book income deltas** (not new-business only):
   MS after-tax income + PN after-tax income + HI distributable earnings, with a one-year-ahead offset.
@@ -197,9 +204,12 @@ A scenario is **feasible** when it satisfies every constraint. C3–C6 and the C
   (one persistent draw across all years — drives the tail) and a **process** component (independent each
   year — largely diversifies away), combined as `exp(z_sys·σ_sys + z_proc(y)·σ_proc − ½(σ_sys²+σ_proc²))`.
   Process shocks are correlated within product/year (claims↔termination, ρ); systematic shocks are
-  independent. All scenarios share **one bank of draws (common random numbers)**, each paired with its
-  **antithetic** mirror, so differences reflect the sales mix, not Monte-Carlo noise. Seeded
-  (`STOCH_SEED = 20260612`) → reproducible.
+  independent. **Preneed is the exception:** its claims and termination are one coupled mortality shock
+  (`cm.PN === lm.PN`), and it carries an extra PN-only **NIER** shock — an *additive bps* level shift on
+  the earned rate (35 bps sys / 15 bps proc by default; calibrated from ~15 bps/yr industry book-yield
+  moves and 20–50 bps preneed interest margins) — which is its dominant risk. All scenarios share **one
+  bank of draws (common random numbers)**, each paired with its **antithetic** mirror, so differences
+  reflect the sales mix, not Monte-Carlo noise. Seeded (`STOCH_SEED = 20260612`) → reproducible.
 - **Risk axis = CTE-90 downside shortfall:** (deterministic plan PVDE) − (average PVDE in the worst 10%
   of draws). Lower/further-left is safer. Also reported: worst-decile **max drawdown** (deepest cumulative
   2026-issue DE) and **P10 IRR**.
