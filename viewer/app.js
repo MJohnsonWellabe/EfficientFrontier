@@ -109,6 +109,83 @@ function downloadScenCSV(){
   _dlCSV(rows.join('\n'),'frontier_results.csv');
 }
 
+/* ---- Export the systematic/process scalar stream for the SELECTED scenario + run,
+   laid out cell-for-cell for the workbook Scalars sheet (see tools/per_year_scalars.py),
+   so it can be pasted into Excel and recalced for an apples-to-apples RBC comparison.
+   The run's draws are recovered by deterministically replaying the SAME seeded shock
+   bank that runFrontier built (CRN), then split into systematic x process[y] exactly as
+   shockFromBank combines them: mult(y)=exp(z_sys*sig_sys+z_proc[y]*sig_proc-0.5*(sig_sys^2+sig_proc^2)). */
+function exportScalars(){
+  if(!S.results.length){alert('Run the frontier first.');return;}
+  var scen=currentScen();
+  if(!scen){alert('Pick a scenario (not Baseline) in the SCENARIO dropdown first.');return;}
+  var sensId=S.sel.sens||'det';
+  var YEARS=[];for(var y=2026;y<=2055;y++)YEARS.push(y);
+  var clSys={MS:1,PN:1,HI:1},tmSys={MS:1,PN:1,HI:1},nierSys=0,clProc={},tmProc={};
+  var nierProc=YEARS.map(function(){return 0;});
+  PRODS.forEach(function(c){clProc[c]=YEARS.map(function(){return 1;});tmProc[c]=YEARS.map(function(){return 1;});});
+  var runLabel='Deterministic (no shocks)';
+  if(sensId!=='det'){
+    F.setSeed(STOCH_SEED);                                   // replay runFrontier's RNG order exactly
+    lhs(S.nScen,S.bounds.MS[0],S.bounds.MS[1]);lhs(S.nScen,S.bounds.PN[0],S.bounds.PN[1]);lhs(S.nScen,S.bounds.HI[0],S.bounds.HI[1]);
+    var BANK=buildShockBank(S.nStoch),k=+sensId;
+    if(k<0||k>=BANK.length){alert('Selected run is out of range — re-run the frontier.');return;}
+    var b=BANK[k];runLabel='Run '+(k+1);
+    function ln(z,sig){return Math.exp(z*sig-0.5*sig*sig);}
+    PRODS.forEach(function(c){
+      if(c==='PN'){
+        var mS=S.claimsSD.PN||0,mP=(S.claimsProcSD&&S.claimsProcSD.PN)||0;
+        clSys.PN=ln(b.cs.PN,mS);clProc.PN=YEARS.map(function(yy,i){return ln(b.cp.PN[i],mP);});
+        tmSys.PN=clSys.PN;tmProc.PN=clProc.PN.slice();                 // PN term == PN claims (coupled mortality)
+      }else{
+        var cS=S.claimsSD[c]||0,cP=(S.claimsProcSD&&S.claimsProcSD[c])||0,lS=S.lapseSD[c]||0,lP=(S.lapseProcSD&&S.lapseProcSD[c])||0;
+        var rho=(S.procCorr&&S.procCorr[c])||0,rr=Math.sqrt(Math.max(0,1-rho*rho));
+        clSys[c]=ln(b.cs[c],cS);clProc[c]=YEARS.map(function(yy,i){return ln(b.cp[c][i],cP);});
+        tmSys[c]=ln(b.ls[c],lS);tmProc[c]=YEARS.map(function(yy,i){return ln(rho*b.cp[c][i]+rr*b.lp[c][i],lP);});
+      }
+    });
+    var niS=(S.nierSD&&S.nierSD.PN)||0,niP=(S.nierProcSD&&S.nierProcSD.PN)||0;
+    nierSys=b.ni.PN*niS;nierProc=YEARS.map(function(yy,i){return b.nip.PN[i]*niP;});
+  }
+  var sc=mkScalars(scen.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1}),salesScalar={};
+  PRODS.forEach(function(c){var up=sc.updSales[PNAME[c]],og=sc.origSales[PNAME[c]];salesScalar[c]=SALES_YEARS.map(function(yy,i){return up[i]/og[i];});});
+  var ss=sensScalars(scen,sensId),det=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);
+  var rbcNo={},rbcNote={},tac={},req={};
+  SALES_YEARS.forEach(function(yy){var d=det.surplus[yy];if(!d)return;req[yy]=d.reqCap;tac[yy]=d.tac;rbcNote[yy]=d.ratio;rbcNo[yy]=d.reqCap?(d.tac-(d.noteAdj||0))/d.reqCap:null;});
+  function rowY(label,vals){return [label].concat(vals).join(',');}
+  function rowS(label,v){var a=[label,v];for(var i=1;i<YEARS.length;i++)a.push('');return a.join(',');}
+  function rowSal(label,vals){var a=[label].concat(vals);for(var i=vals.length;i<YEARS.length;i++)a.push('');return a.join(',');}
+  var L=[];
+  L.push('# EfficientFrontier scalar stream  scenario #'+scen.id+' (MS/PN/HI '+fmt(scen.sales.MS,1)+'/'+fmt(scen.sales.PN,1)+'/'+fmt(scen.sales.HI,1)+')  '+runLabel+'  seed='+STOCH_SEED);
+  L.push('# Paste each value range into the indicated Scalars! cells, then recalc. Years 2026..2055. Sales scalars paste as VALUES over C12:L14.');
+  L.push(rowY('label \\ year',YEARS));
+  L.push(rowSal('Sales scalar MS (C12:L12)',salesScalar.MS));
+  L.push(rowSal('Sales scalar PN (C13:L13)',salesScalar.PN));
+  L.push(rowSal('Sales scalar HI (C14:L14)',salesScalar.HI));
+  L.push(rowS('Claims systematic MS (C17)',clSys.MS));
+  L.push(rowS('Claims systematic PN (C18)',clSys.PN));
+  L.push(rowS('Claims systematic HI (C19)',clSys.HI));
+  L.push(rowS('Term systematic MS (C22)',tmSys.MS));
+  L.push(rowS('Term systematic PN (C23)',tmSys.PN));
+  L.push(rowS('Term systematic HI (C24)',tmSys.HI));
+  L.push(rowS('NIER systematic PN (C26)',nierSys));
+  L.push(rowY('Claims process MS (C29:AF29)',clProc.MS));
+  L.push(rowY('Claims process PN (C30:AF30)',clProc.PN));
+  L.push(rowY('Claims process HI (C31:AF31)',clProc.HI));
+  L.push(rowY('Term process MS (C34:AF34)',tmProc.MS));
+  L.push(rowY('Term process PN (C35:AF35)',tmProc.PN));
+  L.push(rowY('Term process HI (C36:AF36)',tmProc.HI));
+  L.push(rowY('NIER process PN (C39:AF39)',nierProc));
+  L.push('');
+  L.push('# ---- ONLINE EXPECTED TARGETS (compare after recalc) ----');
+  L.push(rowSal('year',SALES_YEARS));
+  L.push(rowSal('RBC ratio no-note (Surplus Recalc row 52)',SALES_YEARS.map(function(yy){return rbcNo[yy]!=null?rbcNo[yy].toFixed(4):'';})));
+  L.push(rowSal('RBC ratio w/ note (Surplus Recalc row 54)',SALES_YEARS.map(function(yy){return rbcNote[yy]!=null?rbcNote[yy].toFixed(4):'';})));
+  L.push(rowSal('TAC (Surplus Recalc row 50)',SALES_YEARS.map(function(yy){return tac[yy]!=null?tac[yy].toFixed(3):'';})));
+  L.push(rowSal('Required capital (Surplus Recalc row 48)',SALES_YEARS.map(function(yy){return req[yy]!=null?req[yy].toFixed(3):'';})));
+  _dlCSV(L.join('\n'),'scalars_scen'+scen.id+'_'+(sensId==='det'?'det':'run'+(+sensId+1))+'.csv');
+}
+
 /* ---- Init ---- */
 async function init(){
   // Data lives in data/, loaded at runtime (no gzip+base64 blobs embedded in code).

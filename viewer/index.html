@@ -413,6 +413,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO</label><select id="rbcScenSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="rbcSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">BASIS</label><div class="seg" id="rbcBasisSeg"><button data-b="orig" class="active">Baseline charges</button><button data-b="scen">Scenario</button></div></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">&nbsp;</label><button class="btn ghost sm" onclick="exportScalars()" title="Export the selected scenario + run's systematic/process scalar stream (sales, claims, term, PN NIER) for pasting into the Excel workbook">↓ Export scalars</button></div>
       </div>
     </div>
     <p class="hint" style="margin-bottom:12px">TSC3 at 50% per NAIC. Required capital = post-covariance × 1.03. Binding window 2026–2030 highlighted.</p>
