@@ -67,7 +67,7 @@ function buildState(EFENG, dataDir, growth) {
     nierSD: { MS: 0, PN: 0.0035, HI: 0 },
     nierProcSD: { MS: 0, PN: 0.0015, HI: 0 },
     nScen: 100, nStoch: 100,
-    cons: { rbcFloor: 3.5, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.10, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150 },
+    cons: { rbcFloor: 3.5, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150 },
     surplusNote: { on: true, amount: 100, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
     results: []
   };

@@ -78,7 +78,7 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
   - C1 — Min RBC ratio 2026–2030 ≥ **3.5×**
   - C2 — Min ΔTAC / BOP TAC ≥ **−12%** (every year)
   - C3 — 2026-issue IRR ≥ sales-weighted hurdle (**on**)
-  - C4 — 2026-issue IRR tail: P(IRR < **8%**) ≤ **10%**
+  - C4 — 2026-issue IRR tail: P(IRR < **8%**) ≤ **15%**
   - C5 — 2026-issue DE > 0 by **yr 4** (2029)
   - C6 — 2026-issue cumulative DE > 0 by **yr 10** (2035)
   - CumDE floor ≥ **−$180M**; Year-1 DE floor ≥ **−$150M**
