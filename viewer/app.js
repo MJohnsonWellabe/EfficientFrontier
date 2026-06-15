@@ -5,7 +5,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,
-  cons:{rbcFloor:3.5,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
+  cons:{rbcFloor:3.5,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150},
   surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
@@ -666,6 +666,7 @@ function computeShadowPrices(){
   html+=relax('deYr',+1,'C5 — DE-positive year +1','yr '+S.cons.deYr,'yr '+(S.cons.deYr+1));
   html+=relax('cumDeYr',+1,'C6 — CumDE-positive year +1','yr '+S.cons.cumDeYr,'yr '+(S.cons.cumDeYr+1));
   html+=relax('cumDEFloor',-20,'CumDE floor lower','$'+fmt(S.cons.cumDEFloor,0)+'M','$'+fmt(S.cons.cumDEFloor-20,0)+'M');
+  html+=relax('de1Floor',-30,'Year-1 DE floor lower','$'+fmt(S.cons.de1Floor,0)+'M','$'+fmt(S.cons.de1Floor-30,0)+'M');
   html+='</tbody></table></div>';
   html+='<p class="hint" style="margin-top:8px">Highlighted rows unlock additional feasible return. "Δ vs base" is the change in the best feasible PVDE (the highest-return scenario that passes every constraint). Each row relaxes one constraint only; effects are not additive.</p>';
   el.innerHTML=html;
@@ -923,8 +924,18 @@ function renderEvidence(){
     row('Floor','≥ '+fmt(c.cumDEFloor,0)+' $M')+row('Deepest cumDE',fmt(minCum,1)+' $M in '+minCumYr,cfpass?'good':'bad'),
     'The most negative the 2026-issue cumulative DE reaches before turning cash-positive — the peak capital at risk on the 2026 cohort.');
 
+  // Year-1 DE floor — 2026-issue first-year acquisition strain
+  var de1V=m.de26[2026]||0, d1pass=!(c.de1Floor!=null&&de1V<c.de1Floor);
+  var d1yrs=[];for(var yy=2026;yy<=2030;yy++)d1yrs.push(yy);
+  var d1tbl=yearTable(d1yrs,[
+    {label:'2026-issue DE ($M)',vals:d1yrs.map(function(y){return m.de26[y]||0;}),fmt:function(v){return fmt(v,1);},bad:function(v,y){return y===2026&&c.de1Floor!=null&&v<c.de1Floor;}}
+  ]);
+  html+=card('Yr-1 DE Floor','Year-1 (2026) distributable-earnings floor',d1pass,
+    row('Floor','≥ $'+fmt(c.de1Floor,0)+'M')+row('2026 (year-1) DE',fmt(de1V,1)+' $M',d1pass?'good':'bad')+row('Headroom vs floor',fmt(de1V-(c.de1Floor||0),1)+' $M',d1pass?'good':'bad'),
+    'First-year (2026) distributable earnings on the 2026 issue cohort (all 3 products summed; pre-2026 in-force excluded). Caps how deep the first-year new-business acquisition strain can run — a capital-budget proxy on single-year aggressiveness. 2026 is highlighted if it breaches the floor.',d1tbl);
+
   // Summary banner
-  var allPass=[c1pass,c2pass,c3pass,c4pass,c5pass,c6pass,cfpass];
+  var allPass=[c1pass,c2pass,c3pass,c4pass,c5pass,c6pass,cfpass,d1pass];
   var nFail=allPass.filter(function(x){return !x;}).length;
   var banner='<div style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:650;'+(nFail===0?'background:#e6f5ea;color:#1c7a3d':'background:#fdeaea;color:#b3261e')+'">'+(nFail===0?'✓ Scenario #'+scen.id+' is FEASIBLE — all constraints satisfied':'✗ Scenario #'+scen.id+' is INFEASIBLE — '+nFail+' constraint'+(nFail>1?'s':'')+' failed')+'</div>';
 
