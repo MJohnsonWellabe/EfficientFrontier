@@ -2,7 +2,7 @@
 """
 HISTORICAL / SUPERSEDED (2026-06-14): this was the one-time programmatic migration of the
 original `EffFrontierEngine_5.xlsx`. The canonical workbook is now the hand-refined, validated
-`EffFrontierEngine_V2Slim.xlsx` (cleaner 2-D product×year Scalars layout); `_5` has been retired.
+`EffFrontierEngine_V2Slim_Final.xlsx` (cleaner 2-D product×year Scalars layout); `_5` has been retired.
 Kept only as a reference record of the original migration — do NOT run it against V2Slim.
 
 Restructure the EfficientFrontier workbook's `Scalars` sheet into the online

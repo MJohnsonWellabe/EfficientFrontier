@@ -18,7 +18,9 @@ Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq
 
 MS recalc IRR under workbook scalars: `0.17763524`
 
-Baseline RBC ratios, 2026–2030: `5.36 / 4.67 / 3.80 / 3.76 / 4.33` (minimum `3.76` in **2029**).
+Baseline RBC ratios, 2026–2030: `5.14 / 4.28 / 3.32 / 3.15 / 3.54` (minimum `3.15` in **2029**).
+
+> **Re-baseline note (2026-06-15).** The five RBC ratios were re-baselined from `5.36 / 4.67 / 3.80 / 3.76 / 4.33` to mirror the **`EffFrontierEngine_V2Slim_Final`** workbook: (a) the NAIC **×0.5 factor on the C-3 (TSC3) charge was removed** (`src/rbc-surplus.js`), so C-3 is now charged in full; and (b) **Input TS** (RBC charge amounts) and **Input Surplus** (Total Surplus, 2026–2035) were rebased from the workbook (`data/InputTS.csv`, `data/InputSurplus.csv`). VNB IRR/NPV and the MS recalc IRR are **unchanged** (Input EV and new-business assumptions untouched). A separate **PN EV (back-book) NIER** schedule was also added (`data/params.json` `Preneed.NIER_EV`; `src/vnb.js`/`src/frontier.js`) — it feeds only the scenario EV-side TAC delta and moves no §1 target. **Note:** the new baseline minimum (`3.15`) is below the §2 **C1** floor (≥ 4.0×), so the unshocked baseline is now C1-infeasible — revisit the C1 threshold if that floor is still intended.
 
 > **Refresh note (2026-06-13).** The **PN VNB** (`0.10667571 / $33.553M`) and the **MS recalc IRR** (`0.17763524`) were **re-derived from the current `EfficientFrontier-29.html` workbook** and replace the prior transcriptions `0.14688215 / $6.574M` and `0.17833333`, which were stale from an earlier dataset (PN's sales/in-force inputs in -29 differ materially). MS VNB, HI VNB, and all RBC ratios were already exact and are unchanged. All five numbers above now reproduce to full precision via `runner/validate.js`.
 
@@ -152,7 +154,7 @@ The HTML app is a **viewer**, not the compute environment. Heavy runs go through
 
 ## 9. Excel workbook — per-year systematic/process scalar parity (validation harness)
 
-**Canonical workbook: `EffFrontierEngine_V2Slim.xlsx`** — Matt's hand-refined, **validated** version that reproduces the online engine's seeded-scenario RBC ratios *exactly* (confirmed 2026-06-14). It is **native Excel** (no "format/extension" open warning) and slim (13 sheets). Its `Scalars` sheet carries the same systematic + process decomposition but in a cleaner **2-D product×year `INDEX`** layout (e.g. `Input EV Recalc` claims = `INDEX(Scalars!$C$17:$AF$19, MATCH(product), MATCH(year))`), so the exact cell rows differ from the description below.
+**Canonical workbook: `EffFrontierEngine_V2Slim_Final.xlsx`** — Matt's hand-refined, **validated** workbook. It is **native Excel** (no "format/extension" open warning) and slim (13 sheets). Its `Scalars` sheet carries the same systematic + process decomposition but in a cleaner **2-D product×year `INDEX`** layout (e.g. `Input EV Recalc` claims = `INDEX(Scalars!$C$17:$AF$19, MATCH(product), MATCH(year))`), so the exact cell rows differ from the description below. The `_Final` revision (2026-06-15) carries three directed model changes now mirrored into the engine and re-baselined in §1: the **C-3 (TSC3) ×0.5 factor removed** (charged in full), **Input TS / Input Surplus rebased**, and a **PN EV (back-book) NIER** schedule added (see §1 re-baseline note and `Preneed.NIER_EV` in `data/params.json`). Supersedes the earlier `EffFrontierEngine_V2Slim.xlsx`.
 
 The notes below document the *original* programmatic migration (`tools/per_year_scalars.py` on the now-retired `EffFrontierEngine_5.xlsx`), which established the mechanics; the V2Slim layout supersedes the specific row addresses but keeps the same math. The matching scenario export is `runner/export-scalars.js` (and the viewer's RBC-tab **Export scalars** button).
 

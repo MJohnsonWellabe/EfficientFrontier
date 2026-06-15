@@ -24,7 +24,7 @@ var CANON = {
     HI: { irr: 0.17163078, npvDE: 29.458 }
   },
   msRecalcIRR: 0.17763524,                     // refreshed from the -29 workbook (was 0.17833333)
-  rbc: [5.36, 4.67, 3.80, 3.76, 4.33]
+  rbc: [5.14, 4.28, 3.32, 3.15, 3.54]          // re-baselined 2026-06-15 for V2Slim_Final (full C-3 charge; rebased Input TS/Surplus). Was [5.36, 4.67, 3.80, 3.76, 4.33].
 };
 
 var fails = 0;

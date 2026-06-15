@@ -39,7 +39,7 @@ function loadTS(text) {
   }
   return data;
 }
-// charge for product (exact name), line, calendar year-end; TSC3 x0.5 applied by caller
+// charge for product (exact name), line, calendar year-end; C-3 (TSC3) charged in full
 function tsSum(ts, prod, line, year) {
   let s = 0; const ll = line.toLowerCase(); const ye = year + '-12-31';
   for (const d of ts) {
@@ -52,19 +52,20 @@ function tsSum(ts, prod, line, year) {
 }
 function surplusCalc(ts, surplusRows, tsAdj, years) {
   const modeled = { 'Medicare Supplement': 'Medicare Supplement', 'Hospital Indemnity': 'Hospital Indemnity', 'PreNeed': 'PreNeed' };
-  const half = k => k === 'TSC3' ? 0.5 : 1;
+  // C-3 (TSC3) is charged in full. The prior NAIC ×0.5 factor was removed 2026-06-15
+  // to mirror the EffFrontierEngine_V2Slim_Final workbook; this moves the §1 RBC anchors.
   const out = {};
   for (const y of years) {
     // per-product charges
     const prod = {};
     for (const pn of Object.keys(modeled)) {
       prod[pn] = {};
-      for (const k of TSC_KEYS) prod[pn][k] = tsSum(ts, pn, k, y) / 1e6 * half(k);
+      for (const k of TSC_KEYS) prod[pn][k] = tsSum(ts, pn, k, y) / 1e6;
     }
     // all other = total(all) - the three; + adjustments to TSC1 and TSC1CS
     const allOther = {};
     for (const k of TSC_KEYS) {
-      let tot = tsSum(ts, null, k, y) / 1e6 * half(k);
+      let tot = tsSum(ts, null, k, y) / 1e6;
       let resid = tot - prod['Medicare Supplement'][k] - prod['Hospital Indemnity'][k] - prod['PreNeed'][k];
       if (k === 'TSC1') resid += tsAdj.G2;
       if (k === 'TSC1CS') resid += tsAdj.I2;

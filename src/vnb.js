@@ -87,7 +87,7 @@ function compileEV(ev) {
 // per-product yearly assumption with MATCH(MIN(year,2030)) and flat-extend
 function assumLookup(perProd, prodName, kind, year) {
   const yrs = [2025, 2026, 2027, 2028, 2029, 2030];
-  const arr = perProd[prodName][kind];
+  const arr = perProd[prodName][kind] || perProd[prodName].NIER;  // fallback (e.g. NIER_EV only defined for PN)
   const y = Math.min(year, 2030);
   let idx = yrs.indexOf(y); if (idx < 0) idx = 0;
   return arr[idx];
@@ -132,7 +132,7 @@ function buildVNB(ev, prod, params, opts) {
     const dt = monthYear(p, baseYear), yr = dt.getUTCFullYear();
     m.Premium[p] = EarnedPrem[p] / 1e6;
     const nshift = (opts.nierShift && opts.nierShift[yr] != null) ? opts.nierShift[yr] : 0;   // additive bps NIER shock (PN stochastic only; 0 elsewhere -> §1 unchanged)
-    const nier = assumLookup(P.perProduct, prodName, 'NIER', yr) + nshift;
+    const nier = assumLookup(P.perProduct, prodName, opts.nierKind || 'NIER', yr) + nshift;    // nierKind: 'NIER_EV' for the PN back book (EV side)
     const rate = Math.pow(1 + nier, 1 / 12) - 1;
     const assetsP = m.CLRes[p] + m.TabRes[p] + m.TS[p];
     const assetsPrev = p > 0 ? (m.CLRes[p - 1] + m.TabRes[p - 1] + m.TS[p - 1]) : 0;

@@ -4,7 +4,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   origSales:{MS:{2026:303.411,2027:285.0,2028:285.0,2029:285.0,2030:285.0},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
-  nScen:100,nStoch:100,
+  nScen:100,nStoch:100,seed:null,lastRunSeed:null,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
   surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
@@ -25,6 +25,7 @@ function sleep(){return new Promise(function(r){setTimeout(r,0);});}
    runner/ uses — one source of compute truth, no viewer/runner drift. */
 var EMBEDDED={};
 var F=EFFRONTIER.create(S,EFENG);
+S.seed=F.STOCH_SEED;   // default RNG seed (overridable via the Config seed input / Randomize)
 var lhs=F.lhs,buildShockBank=F.buildShockBank,shockFromBank=F.shockFromBank,
     pctile=F.pctile,stddev=F.stddev,cteLow=F.cteLow,semidevBelow=F.semidevBelow,
     downsideRisk=F.downsideRisk,cteShortfall=F.cteShortfall,cteShortfallScaled=F.cteShortfallScaled,
@@ -126,7 +127,7 @@ function exportScalars(){
   PRODS.forEach(function(c){clProc[c]=YEARS.map(function(){return 1;});tmProc[c]=YEARS.map(function(){return 1;});});
   var runLabel='Deterministic (no shocks)';
   if(sensId!=='det'){
-    F.setSeed(STOCH_SEED);                                   // replay runFrontier's RNG order exactly
+    F.setSeed(S.lastRunSeed!=null?S.lastRunSeed:STOCH_SEED); // replay runFrontier's RNG order exactly (the seed that produced these results)
     lhs(S.nScen,S.bounds.MS[0],S.bounds.MS[1]);lhs(S.nScen,S.bounds.PN[0],S.bounds.PN[1]);lhs(S.nScen,S.bounds.HI[0],S.bounds.HI[1]);
     var BANK=buildShockBank(S.nStoch),k=+sensId;
     if(k<0||k>=BANK.length){alert('Selected run is out of range — re-run the frontier.');return;}
@@ -156,7 +157,7 @@ function exportScalars(){
   function rowS(label,v){var a=[label,v];for(var i=1;i<YEARS.length;i++)a.push('');return a.join(',');}
   function rowSal(label,vals){var a=[label].concat(vals);for(var i=vals.length;i<YEARS.length;i++)a.push('');return a.join(',');}
   var L=[];
-  L.push('# EfficientFrontier scalar stream  scenario #'+scen.id+' (MS/PN/HI '+fmt(scen.sales.MS,1)+'/'+fmt(scen.sales.PN,1)+'/'+fmt(scen.sales.HI,1)+')  '+runLabel+'  seed='+STOCH_SEED);
+  L.push('# EfficientFrontier scalar stream  scenario #'+scen.id+' (MS/PN/HI '+fmt(scen.sales.MS,1)+'/'+fmt(scen.sales.PN,1)+'/'+fmt(scen.sales.HI,1)+')  '+runLabel+'  seed='+(S.lastRunSeed!=null?S.lastRunSeed:STOCH_SEED));
   L.push('# Paste each value range into the indicated Scalars! cells, then recalc. Years 2026..2055. Sales scalars paste as VALUES over C12:L14.');
   L.push(rowY('label \\ year',YEARS));
   L.push(rowSal('Sales scalar MS (C12:L12)',salesScalar.MS));
@@ -231,7 +232,8 @@ async function init(){
 async function runFrontier(){
   readInputs();computeBaseline();
   var n=S.nScen,ns=S.nStoch;
-  F.setSeed(STOCH_SEED);                       // reseed: reproducible sales draws + shock bank
+  S.lastRunSeed=S.seed;                         // remember the seed that produced these results (for export/replay + custom-scenario CRN)
+  F.setSeed(S.seed);                            // reseed: reproducible sales draws + shock bank (same seed -> identical frontier)
   var msA=lhs(n,S.bounds.MS[0],S.bounds.MS[1]),pnA=lhs(n,S.bounds.PN[0],S.bounds.PN[1]),hiA=lhs(n,S.bounds.HI[0],S.bounds.HI[1]);
   var BANK=buildShockBank(ns);                 // ONE bank reused across all scenarios (common random numbers)
   var fill=document.getElementById('progFill'),pw=document.getElementById('progWrap'),st=document.getElementById('runStatus');
@@ -257,7 +259,7 @@ async function runFrontier(){
   markFrontier(S.results);populateSelectors();
   pw.style.display='none';document.getElementById('runBtn').disabled=false;
   var nfr=S.results.filter(function(r){return r.isFrontier;}).length,nfe=S.results.filter(function(r){return r.feasible;}).length;
-  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n;
+  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed;
   showTab('frontier');
 }
 
@@ -265,13 +267,16 @@ async function runFrontier(){
 async function testCustomScenario(){
   var resultEl=document.getElementById('cs_result');
   if(!S.baseline){computeBaseline();}
-  // Read inputs
-  function g(id){var el=document.getElementById(id);return el?(+el.value||0):0;}
-  var sales={MS:g('csc_MS'),PN:g('csc_PN'),HI:g('csc_HI')};
-  if(sales.MS<=0&&sales.PN<=0&&sales.HI<=0){resultEl.innerHTML='<p class="hint" style="color:var(--red)">Enter at least one positive sales value.</p>';return;}
+  // Read the per-year sales table (3 products × SALES_YEARS); these are explicit annual
+  // sales — no growth schedule applied on top (mkScalars uses arrays verbatim).
+  function cell(c,y){var el=document.getElementById('csc_'+c+'_'+y);return el?(+el.value||0):0;}
+  var sales={};PRODS.forEach(function(c){sales[c]=SALES_YEARS.map(function(y){return cell(c,y);});});
+  S.csSales={};PRODS.forEach(function(c){S.csSales[c]={};SALES_YEARS.forEach(function(y,i){S.csSales[c][y]=sales[c][i];});});  // remember for re-render
+  if(!PRODS.some(function(c){return sales[c].some(function(v){return v>0;});})){resultEl.innerHTML='<p class="hint" style="color:var(--red)">Enter at least one positive sales value.</p>';return;}
+  var sales26={MS:sales.MS[0],PN:sales.PN[0],HI:sales.HI[0]};   // 2026 anchors for display compatibility
   readInputs();   // make sure constraints/note reflect current config
   var ns=Math.max(1,S.nStoch||20);
-  F.setSeed(STOCH_SEED);var BANK=buildShockBank(ns);   // same bank as the frontier (CRN consistency)
+  F.setSeed(S.lastRunSeed!=null?S.lastRunSeed:S.seed);var BANK=buildShockBank(ns);   // same bank as the last frontier run (CRN consistency)
   var mc={MS:1,PN:1,HI:1},ml={MS:1,PN:1,HI:1};
   var det=buildScen(sales,mc,ml);
   var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
@@ -285,7 +290,7 @@ async function testCustomScenario(){
   // Remove any prior custom scenario, then add this one with a distinctive id
   S.results=S.results.filter(function(r){return !r.isCustom;});
   var cid='C'+(S.results.length+1);
-  var rec={id:cid,sales:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
+  var rec={id:cid,sales:sales26,salesTable:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
   rec.riskSD=dr.sd;rec.cte90=dr.cte90;rec.semidev=dr.semidev;rec.ddMed=dr.ddMed;rec.ddWorst=dr.ddWorst;rec.stochDD=sDD;
   S.results.push(rec);
   markFrontier(S.results);populateSelectors();
@@ -363,6 +368,7 @@ function readInputs(){
   S.bounds={MS:[g('b_MS_lo'),g('b_MS_hi')],PN:[g('b_PN_lo'),g('b_PN_hi')],HI:[g('b_HI_lo'),g('b_HI_hi')]};
   S.hurdles={MS:g('h_MS')/100,PN:g('h_PN')/100,HI:g('h_HI')/100};
   S.nScen=Math.max(8,Math.round(g('nScen')));S.nStoch=Math.max(50,Math.round(g('nStoch')));   // floor 50: keeps the C4 IRR-tail estimate stable
+  var _seed=Math.round(g('seedInput'));S.seed=(isFinite(_seed)&&_seed!==0)?_seed:F.STOCH_SEED;   // RNG seed: same seed -> identical frontier
   S.cons={rbcFloor:g('c_rbc'),tacChgFloor:g('c_tacchg')/100,irr3on:(document.getElementById('c_irr3on')||{}).checked,irrA:g('c_irra')/100,irrB:g('c_irrb')/100,deYr:Math.round(g('c_deyr')),cumDeYr:Math.round(g('c_cumdeyr')),cumDEFloor:g('c_cumfloor'),de1Floor:g('c_de1floor')};
   readSurplusNote();
   PRODS.forEach(function(c){S.claimsSD[c]=+(document.getElementById('cs_'+c)||{value:4}).value/100||0;S.claimsProcSD[c]=+(document.getElementById('cs_proc_'+c)||{value:3}).value/100||0;S.lapseSD[c]=+(document.getElementById('ls_'+c)||{value:6.5}).value/100||0;S.lapseProcSD[c]=+(document.getElementById('ls_proc_'+c)||{value:3}).value/100||0;S.procCorr[c]=Math.max(0,Math.min(0.95,+(document.getElementById('rho_'+c)||{value:0}).value||0));});
@@ -426,6 +432,17 @@ function refreshOrigSalesUI(){
   document.getElementById('origSalesTbl').innerHTML=h+'</tbody>';
   var _pEl=document.getElementById('origSalesTbl');
   if(_pEl)_pEl.addEventListener('paste',function(e){e.preventDefault();var text=e.clipboardData.getData('text');var rows=text.trim().split(/\r?\n/);var allInps=_pEl.querySelectorAll('input[type=number]');var startEl=e.target;var startIdx=Array.from(allInps).indexOf(startEl);if(startIdx<0)startIdx=0;var nCols=SALES_YEARS.length,ri=Math.floor(startIdx/nCols),ci=startIdx%nCols;rows.forEach(function(row,rowOff){row.split(/\t/).forEach(function(cell,colOff){var v=parseFloat(cell.replace(/,/g,''));if(isNaN(v))return;var r=ri+rowOff,c=ci+colOff;if(r<PRODS.length&&c<nCols){var inp=allInps[r*nCols+c];if(inp){inp.value=v;inp.dispatchEvent(new Event('change'));}}});});});
+}
+// Custom-scenario per-year sales grid (3 products × SALES_YEARS). Supports Excel paste
+// (click a cell, Ctrl+V a 3×10 block). Values are read verbatim by testCustomScenario.
+function refreshCsSalesUI(){
+  var tbl=document.getElementById('csSalesTbl');if(!tbl)return;
+  var def={MS:300,PN:175,HI:20};
+  var h='<thead><tr><th style="text-align:left;padding:3px 8px 3px 0">Product ($M)</th>'+SALES_YEARS.map(function(y){return'<th style="padding:3px 6px">'+y+'</th>';}).join('')+'</tr></thead><tbody>';
+  var shortName={MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'};
+  PRODS.forEach(function(c){h+='<tr><td style="padding:2px 8px 2px 0;white-space:nowrap">'+shortName[c]+'</td>'+SALES_YEARS.map(function(y){var v=(S.csSales&&S.csSales[c]&&S.csSales[c][y]!=null)?S.csSales[c][y]:def[c];return'<td><input type="number" id="csc_'+c+'_'+y+'" value="'+v+'" step="1" style="width:62px;font-size:11px;padding:2px 4px;font-family:var(--mono);border:1px solid var(--line);border-radius:4px;text-align:right"></td>';}).join('')+'</tr>';});
+  tbl.innerHTML=h+'</tbody>';
+  if(!tbl._pasteBound){tbl._pasteBound=true;tbl.addEventListener('paste',function(e){e.preventDefault();var text=e.clipboardData.getData('text');var rows=text.trim().split(/\r?\n/);var allInps=tbl.querySelectorAll('input[type=number]');var startIdx=Array.from(allInps).indexOf(e.target);if(startIdx<0)startIdx=0;var nCols=SALES_YEARS.length,ri=Math.floor(startIdx/nCols),ci=startIdx%nCols;rows.forEach(function(row,rowOff){row.split(/\t/).forEach(function(cell,colOff){var v=parseFloat(cell.replace(/,/g,''));if(isNaN(v))return;var r=ri+rowOff,c=ci+colOff;if(r<PRODS.length&&c<nCols){var inp=allInps[r*nCols+c];if(inp)inp.value=v;}});});});}
 }
 function handleAssumPaste(e,tid,kind,isNIER){
   e.preventDefault();
@@ -1053,7 +1070,7 @@ function metricsFor(sel){
       feasible:null,isFrontier:null,failCodes:null};
   }
   var r=S.results.find(function(x){return String(x.id)===String(sel);});if(!r)return null;
-  var d=buildScen(r.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
+  var d=buildScen(r.salesTable||r.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
   var rbc={};[2026,2027,2028,2029,2030].forEach(function(y){rbc[y]=d.surplus[y]?d.surplus[y].ratio:null;});
   var minTac=r.tacChg?Math.min.apply(null,Object.keys(r.tacChg).map(function(y){return r.tacChg[y];})):null;
   var de1=r.de26?(r.de26[2026]||0):null,dePos=null,cumPos=null;
@@ -1152,8 +1169,12 @@ function bindAll(){
 document.getElementById('nav').addEventListener('click',function(e){if(e.target.tagName==='BUTTON'&&e.target.dataset.tab)showTab(e.target.dataset.tab);});
 document.getElementById('runBtn').addEventListener('click',function(){readInputs();computeBaseline();runFrontier();});
 (function(){
+  refreshCsSalesUI();
   var t=document.getElementById('csTestBtn');if(t)t.addEventListener('click',testCustomScenario);
   var c=document.getElementById('csClearBtn');if(c)c.addEventListener('click',clearCustomScenario);
+  var rs=document.getElementById('randSeedBtn');if(rs)rs.addEventListener('click',function(){
+    var s=Math.floor(Math.random()*2147483647)+1;var el=document.getElementById('seedInput');if(el)el.value=s;S.seed=s;
+  });
 })();
 // Tab: segment buttons
 ['vnbProdSeg','vnbBasisSeg'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.tagName!=='BUTTON')return;e.target.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('active');});e.target.classList.add('active');var d=e.target.dataset;if(d.p)S.vnbProd=d.p;if(d.b)S.vnbBasis=d.b;renderVNB();});});

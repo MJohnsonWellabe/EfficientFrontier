@@ -224,8 +224,10 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       <div style="margin-top:12px" class="g2">
         <label class="f"><span class="lb">Scenarios (LHS)</span><input type="number" id="nScen" value="100" min="8" max="200"></label>
         <label class="f"><span class="lb">Stochastic runs / scenario</span><input type="number" id="nStoch" value="100" min="50" max="200"></label>
+        <label class="f"><span class="lb">RNG seed</span><input type="number" id="seedInput" value="20260612" step="1"></label>
+        <label class="f"><span class="lb">&nbsp;</span><button type="button" class="btn" id="randSeedBtn" style="padding:8px 14px">🎲 Randomize seed</button></label>
       </div>
-      <p class="hint" style="margin-top:-4px">Minimum 50 draws — the C4 IRR-tail probability is estimated from these draws, and fewer than ~50 gives a coarse, unstable tail estimate. 100 is recommended.</p>
+      <p class="hint" style="margin-top:-4px">Minimum 50 draws — the C4 IRR-tail probability is estimated from these draws, and fewer than ~50 gives a coarse, unstable tail estimate. 100 is recommended. <strong>RNG seed</strong> makes a run reproducible: the same seed always draws the same frontier (default <code>20260612</code>). Click <strong>Randomize</strong> for a fresh draw, or type a previous seed to revisit that exact run.</p>
     </div>
 </div>
 
@@ -338,11 +340,9 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       <h2 class="sh" style="margin:0;flex:0 0 auto">Custom Scenario</h2>
       <span style="font-size:11px;color:var(--muted)">Test your own sales mix against the frontier and constraints</span>
     </div>
-    <p class="hint" style="margin-bottom:12px">Enter a 2026 sales level for each product, then test it. The scenario is evaluated exactly like the random ones — full recalc, stochastic risk, all constraints — and added to the chart (shown as a ★) and the results table below. Run the frontier first so there's a frontier to compare against.</p>
+    <p class="hint" style="margin-bottom:12px">Enter a full per-year sales table ($M) for each product across 2026–2035, then test it. These are the <strong>actual</strong> sales each year — the forward sales-growth schedule is <em>not</em> applied on top. You can <strong>paste a 3×10 block straight from Excel</strong> (click the first cell, then paste). The scenario is evaluated exactly like the random ones — full recalc, stochastic risk, all constraints — and added to the chart (shown as a ★) and the results table below. Run the frontier first so there's a frontier to compare against.</p>
+    <div class="tbl-scroll" style="margin-bottom:10px"><table id="csSalesTbl" style="font-size:12px;border-collapse:collapse"></table></div>
     <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-      <label class="f" style="margin:0"><span class="lb">MS sales ($M)</span><input type="number" id="csc_MS" value="300" step="10"></label>
-      <label class="f" style="margin:0"><span class="lb">PN sales ($M)</span><input type="number" id="csc_PN" value="175" step="10"></label>
-      <label class="f" style="margin:0"><span class="lb">HI sales ($M)</span><input type="number" id="csc_HI" value="20" step="1"></label>
       <button class="btn" id="csTestBtn" style="padding:9px 20px">Test scenario</button>
       <button class="btn ghost sm" id="csClearBtn" style="padding:9px 14px">Clear custom</button>
     </div>
@@ -416,7 +416,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">&nbsp;</label><button class="btn ghost sm" onclick="exportScalars()" title="Export the selected scenario + run's systematic/process scalar stream (sales, claims, term, PN NIER) for pasting into the Excel workbook">↓ Export scalars</button></div>
       </div>
     </div>
-    <p class="hint" style="margin-bottom:12px">TSC3 at 50% per NAIC. Required capital = post-covariance × 1.03. Binding window 2026–2030 highlighted.</p>
+    <p class="hint" style="margin-bottom:12px">C-3 (TSC3) charged in full. Required capital = post-covariance × 1.03. Binding window 2026–2030 highlighted.</p>
     <div class="tbl-scroll"><table id="rbcTbl"></table></div>
   </div>
 </section>

@@ -110,7 +110,7 @@
       var vnbs = {}, origFull = {};
       var vnb26 = {};
       PRODS.forEach(function (c) {
-        vnbs[c] = { v: EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360 }), full: EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false }) };
+        vnbs[c] = { v: EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360 }), full: evFullBook(S.ev, c, null, null) };
         vnbs[c].r = EFENG.vnbResults(vnbs[c].v, P.disc); origFull[c] = vnbs[c].full;
         vnb26[c] = EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360, iy: '2026' });
       });
@@ -135,6 +135,15 @@
         // An all-zero schedule reproduces the original flat projection (updSales = anchor
         // every year) byte-for-byte — that is Invariant 2. Growth is applied ONLY to these
         // sampled scenario draws, never to the baseline.
+        if (Array.isArray(sales[c])) {
+          // Explicit per-year sales table (custom scenario): use the values as-is, by year
+          // index, with NO growth applied on top — these ARE the actual sales each year.
+          upd[PNAME[c]] = base.years.map(function (y, idx) {
+            var v = sales[c][idx];
+            return (v != null && isFinite(v)) ? v : 0;
+          });
+          return;
+        }
         var g = (S.growth && S.growth[c]) || {};
         var prev = sales[c];
         upd[PNAME[c]] = base.years.map(function (y, idx) {
@@ -172,6 +181,22 @@
       });
       return out;
     }
+    // Full-book valuation for the EV side. PN's back book (pre-2026 in-force) uses the
+    // separate PN EV NIER schedule (assum 'NIER_EV'); PN new business and MS/HI stay on
+    // 'NIER'. MS/HI without a NIER shock use one all-book valuation (byte-identical to the
+    // prior behavior). Splitting PN means origFull.PN/recFull.PN reflect the back-book NIER
+    // — this only feeds the scenario EV-side TAC delta, never a MODEL_CANON §1 target.
+    function evFullBook(rec, c, combShift, procShift) {
+      var P = S.params.assum; combShift = combShift || null; procShift = procShift || null;
+      if (c !== 'PN' && !combShift && !procShift) {
+        return EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false });
+      }
+      var nb = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, pnShift: false, nierShift: combShift });                                            // new business (2026+)
+      var infOpts = { nMonths: 360, allBook: true, pnShift: false, iy: '<2026', nierShift: procShift };                                                  // pre-2026 in-force
+      if (c === 'PN') infOpts.nierKind = 'NIER_EV';
+      var inf = EFENG.buildVNB(rec, c, { assum: P }, infOpts);
+      return mergeAnnual(nb, inf);
+    }
     // nier (optional): { combined:{PN:map}, proc:{PN:map} } — back-book NIER routed into RBC only.
     // Systematic+process hits 2026+ new business; process-only hits the pre-2026 in-force.
     // When absent, every call is the original single valuation -> §1 / frontier path unchanged.
@@ -179,14 +204,7 @@
       var P = S.params.assum, sc = mkScalars(sales, claims, lapse);
       var rec = EFENG.recalcEV(S.ev, sc), recNB = {}, recFull = {}, recLIF = {};
       var nComb = (nier && nier.combined) || null, nProc = (nier && nier.proc) || null;
-      function fullBook(c) {
-        var combShift = nComb && nComb[c], procShift = nProc && nProc[c];
-        if (!combShift && !procShift) return EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false });
-        var nb = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, pnShift: false, nierShift: combShift || null });                        // new business (2026+): systematic+process
-        var inf = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, allBook: true, pnShift: false, iy: '<2026', nierShift: procShift || null }); // pre-2026 in-force: process only
-        return mergeAnnual(nb, inf);
-      }
-      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = fullBook(c); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
+      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = evFullBook(rec, c, nComb && nComb[c], nProc && nProc[c]); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
       var baseSc = S.baseline.surplusCalc, ys = S.years.filter(function (y) { return y <= 2035; }), sr = {};
       ys.forEach(function (y) {
         var prod = {};
@@ -213,7 +231,11 @@
       var tacChg = {};[2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035].forEach(function (y) { var a = sr[y - 1] ? sr[y - 1].tac : (y === 2026 ? (S.surplus.totalSurplus[2025] - S.surplus.nonIns[2025] + S.surplus.avr[2025]) : 0), b = sr[y] ? sr[y].tac : 0; tacChg[y] = (a && isFinite(a) && a !== 0) ? (b - a) / a : 0; });
       var atiBopCS = {};[2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035].forEach(function (y) { var ati = PRODS.reduce(function (s, c) { return s + (recFull[c].annual.ATI[y] || 0); }, 0), pt = sr[y - 1] ? sr[y - 1].tac : 0; atiBopCS[y] = pt ? ati / pt : 0; });
       var maxDecline = 0;[2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035].forEach(function (y) { var a = sr[y - 1], b = sr[y]; if (a && b && a.tac > 0) maxDecline = Math.max(maxDecline, (a.tac - b.tac) / a.tac); });
-      var tot2 = sales.MS + sales.PN + sales.HI, wtdIRR = (sales.MS * S.hurdles.MS + sales.PN * S.hurdles.PN + sales.HI * S.hurdles.HI) / tot2;
+      // sales may be a scalar 2026 anchor (frontier draws) or a per-year array (custom scenario);
+      // weight the target hurdle by the 2026 level either way.
+      var s0 = function (v) { return Array.isArray(v) ? v[0] : v; };
+      var wMS = s0(sales.MS), wPN = s0(sales.PN), wHI = s0(sales.HI), tot2 = wMS + wPN + wHI;
+      var wtdIRR = (wMS * S.hurdles.MS + wPN * S.hurdles.PN + wHI * S.hurdles.HI) / tot2;
       return {
         portIRR: portIRR, portNPV: portNPV, wtdIRR: wtdIRR, minRBC: minRBC, de: de, cumDE: cumDE, atiBopCS: atiBopCS, maxDecline: maxDecline, tacChg: tacChg,
         irr26: irr26, npv26: npv26, de26: de26, cumDE26: cumDE26, de26PosYr: de26PosYr, cumDE26PosYr: cumDE26PosYr,
