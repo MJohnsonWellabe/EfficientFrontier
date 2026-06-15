@@ -75,7 +75,7 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 - **Hurdle rates:** MS `12%`, PN `10%`, HI `10%`
 - **Stochastic grid:** `100` LHS scenarios × `100` stochastic runs
 - **Constraints (Configuration-tab defaults, updated 2026-06-13):**
-  - C1 — Min RBC ratio 2026–2030 ≥ **4.0×**
+  - C1 — Min RBC ratio 2026–2030 ≥ **3.5×**
   - C2 — Min ΔTAC / BOP TAC ≥ **−12%** (every year)
   - C3 — 2026-issue IRR ≥ sales-weighted hurdle (**on**)
   - C4 — 2026-issue IRR tail: P(IRR < **8%**) ≤ **10%**
@@ -126,7 +126,7 @@ anchors.
 | Product | 2027 | 2028 | 2029 | 2030 | 2031–2035 |
 |---|---|---|---|---|---|
 | Medicare Supplement (MS) | 0% | 0% | 0% | 0% | 0% |
-| Preneed (PN) | 10% | 10% | 10% | 6% | 6% |
+| Preneed (PN) | 10% | 10% | 10% | 10% | 10% |
 | Hospital Indemnity (HI) | 5% | 5% | 5% | 5% | 5% |
 
 **Invariants (both verified 2026-06-13):**

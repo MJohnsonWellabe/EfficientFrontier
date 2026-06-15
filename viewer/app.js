@@ -1,11 +1,11 @@
 (function(){'use strict';
 var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart:null,
   bounds:{MS:[250,350],PN:[200,240],HI:[18,25]},hurdles:{MS:.12,PN:.10,HI:.10},
-  origSales:{MS:{2026:303.411,2027:285.0,2028:285.0,2029:285.0,2030:285.0},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
+  origSales:{MS:{2026:212.92,2027:200,2028:200,2029:200,2030:200},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,
-  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
+  cons:{rbcFloor:3.5,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
   surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
@@ -26,6 +26,10 @@ function sleep(){return new Promise(function(r){setTimeout(r,0);});}
 var EMBEDDED={};
 var F=EFFRONTIER.create(S,EFENG);
 S.seed=F.STOCH_SEED;   // default RNG seed (overridable via the Config seed input / Randomize)
+// Sales to feed a scenario recompute: a custom scenario carries an explicit per-year
+// salesTable (used verbatim, no growth); frontier scenarios only have a 2026 anchor
+// (scalar) which mkScalars grows by the schedule. Use this everywhere a scenario is re-run.
+function scenSales(scen){return (scen&&scen.salesTable)||(scen&&scen.sales);}
 var lhs=F.lhs,buildShockBank=F.buildShockBank,shockFromBank=F.shockFromBank,
     pctile=F.pctile,stddev=F.stddev,cteLow=F.cteLow,semidevBelow=F.semidevBelow,
     downsideRisk=F.downsideRisk,cteShortfall=F.cteShortfall,cteShortfallScaled=F.cteShortfallScaled,
@@ -40,7 +44,7 @@ function computeBaseline(){F.computeBaseline();renderCumDEBaseline();}
    Per-product annual growth for 2027..2035, compounded off the 2026 anchor. Applied ONLY
    to the sampled efficient-frontier draws (see frontier.js mkScalars), never the baseline.
    Defaults: MS 0% every year; PN 10% (2027-2029) then 6% (2030-2035); HI 5% every year. */
-function defaultGrowth(){var g={MS:{},PN:{},HI:{}};SALES_YEARS.forEach(function(y){if(y===2026)return;g.MS[y]=0.0;g.PN[y]=(y<=2029)?0.10:0.06;g.HI[y]=0.05;});return g;}
+function defaultGrowth(){var g={MS:{},PN:{},HI:{}};SALES_YEARS.forEach(function(y){if(y===2026)return;g.MS[y]=0.0;g.PN[y]=0.10;g.HI[y]=0.05;});return g;}
 S.growth=defaultGrowth();
 function refreshGrowthUI(){
   var gy=SALES_YEARS.filter(function(y){return y>=2027;});
@@ -148,9 +152,9 @@ function exportScalars(){
     var niS=(S.nierSD&&S.nierSD.PN)||0,niP=(S.nierProcSD&&S.nierProcSD.PN)||0;
     nierSys=b.ni.PN*niS;nierProc=YEARS.map(function(yy,i){return b.nip.PN[i]*niP;});
   }
-  var sc=mkScalars(scen.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1}),salesScalar={};
+  var sc=mkScalars(scenSales(scen),{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1}),salesScalar={};
   PRODS.forEach(function(c){var up=sc.updSales[PNAME[c]],og=sc.origSales[PNAME[c]];salesScalar[c]=SALES_YEARS.map(function(yy,i){return up[i]/og[i];});});
-  var ss=sensScalars(scen,sensId),det=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);
+  var ss=sensScalars(scen,sensId),det=buildScen(scenSales(scen),ss.claims,ss.lapse,ss.nier);
   var rbcNo={},rbcNote={},tac={},req={};
   SALES_YEARS.forEach(function(yy){var d=det.surplus[yy];if(!d)return;req[yy]=d.reqCap;tac[yy]=d.tac;rbcNote[yy]=d.ratio;rbcNo[yy]=d.reqCap?(d.tac-(d.noteAdj||0))/d.reqCap:null;});
   function rowY(label,vals){return [label].concat(vals).join(',');}
@@ -754,7 +758,7 @@ function sensScalars(scen,sensId){
 function salesLevels(scen){
   var out={};
   if(scen){
-    var sc=mkScalars(scen.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
+    var sc=mkScalars(scenSales(scen),{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
     PRODS.forEach(function(c){out[c]=SALES_YEARS.map(function(y,i){return sc.updSales[PNAME[c]][i];});});
   }else{
     PRODS.forEach(function(c){out[c]=SALES_YEARS.map(function(y){return S.origSales[c][y];});});
@@ -775,7 +779,7 @@ function renderVNB(){
   var sensId=syncSensSel('vnbSensSel',scen);
   var vnb,res;
   if(sid==='base'||basis==='orig'||!scen){vnb=S.baseline.vnbs[c].v;res=S.baseline.vnbs[c].r;}
-  else{var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);vnb=d.recNB[c];res=EFENG.vnbResults(vnb,P.disc);}
+  else{var ss=sensScalars(scen,sensId);var d=buildScen(scenSales(scen),ss.claims,ss.lapse,ss.nier);vnb=d.recNB[c];res=EFENG.vnbResults(vnb,P.disc);}
   var statsEl=document.getElementById('vnbStats');
   statsEl.innerHTML='<div class="vnb-stat"><span class="k">IRR</span><span class="v">'+pct(res.irr,2)+'</span></div><div class="vnb-stat"><span class="k">PV Dist. Earnings</span><span class="v">'+fmt(res.npvDE,1)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">PV Premium</span><span class="v">'+fmt(res.npvPremium,0)+' <small style="font-size:13px;color:#9fc6cc">$M</small></span></div><div class="vnb-stat"><span class="k">Product / Basis</span><span class="v" style="font-size:14px">'+({MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'})[c]+' / '+(basis==='orig'?'Orig':'Recalc')+'</span></div>';
   var vsEl=document.getElementById('vnbSales');
@@ -797,7 +801,7 @@ function renderRBC(){
   var sid=S.sel.scen;
   var scen=currentScen();
   var sensId=syncSensSel('rbcSensSel',scen);
-  var sc=basis==='orig'||sid==='base'||!scen?S.baseline.surplusCalc:(function(){var ss=sensScalars(scen,sensId);var d=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);return d.surplus;})();
+  var sc=basis==='orig'||sid==='base'||!scen?S.baseline.surplusCalc:(function(){var ss=sensScalars(scen,sensId);var d=buildScen(scenSales(scen),ss.claims,ss.lapse,ss.nier);return d.surplus;})();
   var minRBC=Math.min.apply(null,[2026,2027,2028,2029,2030].map(function(y){return sc[y]?sc[y].ratio:Infinity;}));
   var minYr=[2026,2027,2028,2029,2030].reduce(function(a,y){return sc[y]&&sc[y].ratio<(sc[a]?sc[a].ratio:Infinity)?y:a;},2026);
   function rsb(k,v){return'<div class="stat-box"><span class="stat-lbl">'+k+'</span><span class="stat-val">'+v+'</span></div>';}
@@ -823,7 +827,7 @@ function renderEvidence(){
   var sensId=syncSensSel('evSensSel',scen);
   if(!scen){body.innerHTML='<p class="hint">Select a run scenario (after running the frontier) to see its constraint evidence. The baseline has no scenario sales applied.</p>';return;}
   var ss=sensScalars(scen,sensId);
-  var m=buildScen(scen.sales,ss.claims,ss.lapse,ss.nier);
+  var m=buildScen(scenSales(scen),ss.claims,ss.lapse,ss.nier);
   // Stochastic IRRs for C4 (use the scenario's stored stochastic 2026-issue IRRs)
   var stochIRRs=scen.stochIRRs||[];
   var c=S.cons;
@@ -935,7 +939,7 @@ function renderDebug(){
   var sensId=syncSensSel('dbgSensSel',scen);
   var useClaims={MS:1,PN:1,HI:1},useLapse={MS:1,PN:1,HI:1},useNier=null;
   if(scen&&sensId!=='det'&&scen.stochScalars&&scen.stochScalars[+sensId]){var sc2=scen.stochScalars[+sensId];useClaims=sc2.claims;useLapse=sc2.lapse;if(sc2.nier||sc2.nierProc)useNier={combined:sc2.nier||{},proc:sc2.nierProc||{}};}
-  var P=S.params.assum,det=isBase?null:buildScen(scen.sales,useClaims,useLapse,useNier);
+  var P=S.params.assum,det=isBase?null:buildScen(scenSales(scen),useClaims,useLapse,useNier);
   function sec(t,bodyFn){return'<div class="dbg-sec"><div class="dbg-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+t+' <span>▾</span></div><div class="dbg-body open"><div class="hscroll">'+bodyFn()+'</div></div></div>';}
   var html='';
   /* 1: Scalars - per year for sales, claims, lapse and (PN) the NIER shift */

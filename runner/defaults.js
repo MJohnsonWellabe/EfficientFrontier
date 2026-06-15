@@ -18,7 +18,7 @@ function defaultGrowth() {
     var y = SALES_YEARS[i];
     if (y === 2026) continue;                       // 2026 is the anchor, never grown
     g.MS[y] = 0.0;
-    g.PN[y] = (y <= 2029) ? 0.10 : 0.06;
+    g.PN[y] = 0.10;
     g.HI[y] = 0.05;
   }
   return g;
@@ -67,7 +67,7 @@ function buildState(EFENG, dataDir, growth) {
     nierSD: { MS: 0, PN: 0.0035, HI: 0 },
     nierProcSD: { MS: 0, PN: 0.0015, HI: 0 },
     nScen: 100, nStoch: 100,
-    cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.10, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -120 },
+    cons: { rbcFloor: 3.5, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.10, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -120 },
     surplusNote: { on: true, amount: 100, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
     results: []
   };
