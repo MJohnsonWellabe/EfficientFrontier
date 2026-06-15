@@ -82,7 +82,7 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
   - C5 — 2026-issue DE > 0 by **yr 4** (2029)
   - C6 — 2026-issue cumulative DE > 0 by **yr 10** (2035)
   - CumDE floor ≥ **−$180M**; Year-1 DE floor ≥ **−$150M**
-- **Surplus note:** default **ON**, **$100M**, 10-yr tenor, 9% interest, 3% upfront fee, 2026-06-30 start.
+- **Surplus note:** default **ON**, **$100M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
   Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the
   §1 figures). **§1 RBC remains the no-note engine anchor** verified by `node runner/validate.js`.
 
