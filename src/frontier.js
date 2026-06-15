@@ -206,13 +206,23 @@
       var nComb = (nier && nier.combined) || null, nProc = (nier && nier.proc) || null;
       var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = evFullBook(rec, c, nComb && nComb[c], nProc && nProc[c]); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
       var baseSc = S.baseline.surplusCalc, ys = S.years.filter(function (y) { return y <= 2035; }), sr = {};
+      var prevTac = null, prevBt = null;   // cumulative TAC roll-forward state (no-note basis; note added by applyNoteToSurplus)
       ys.forEach(function (y) {
         var prod = {};
         Object.keys(baseSc[y].prod).forEach(function (pname) { var code = pname === 'PreNeed' ? 'PN' : pname === 'Hospital Indemnity' ? 'HI' : 'MS'; var vi = (y - 2025) * 12; var oL = S.origLIF[code][vi] || 0, rL = recLIF[code] ? (recLIF[code][vi] || 0) : 0, inf = y === 2025 || Math.abs(oL) < 1e-9 ? 1 : rL / oL; var oC = (S.origClaims[code] && S.origClaims[code][vi]) || 0, rC = (recClaims[code] && recClaims[code][vi]) || 0, infC = y === 2025 || Math.abs(oC) < 1e-9 ? 1 : rC / oC; prod[pname] = {}; EFENG.TSC_KEYS.forEach(function (k) { prod[pname][k] = baseSc[y].prod[pname][k] * (k === 'TSC2' ? infC : inf); }); });
         var tot = {}; EFENG.TSC_KEYS.forEach(function (k) { tot[k] = Object.values(prod).reduce(function (s, p) { return s + p[k]; }, 0) + baseSc[y].allOther[k]; });
         var T = tot, pc = T.TSC0 + T.TSC4a + Math.sqrt(Math.pow(T.TSC1 + T.TSLR016 + T.TSC3, 2) + T.TSC1CS * T.TSC1CS + T.TSC2 * T.TSC2 + T.TSC4b * T.TSC4b), rq = pc * 1.03;
-        var dy = y; var dMS = (recFull.MS.annual.ATI[dy] || 0) - (S.baseline.origFull.MS.annual.ATI[dy] || 0), dPN = (recFull.PN.annual.ATI[dy] || 0) - (S.baseline.origFull.PN.annual.ATI[dy] || 0), dHI = (recFull.HI.annual.ATI[dy] || 0) - (S.baseline.origFull.HI.annual.ATI[dy] || 0);
-        var id = dMS + dPN + dHI, bt = S.surplus.totalSurplus[y] - S.surplus.nonIns[y] + S.surplus.avr[y], tac = bt + id;
+        // Scenario TAC — cumulative roll-forward (mirrors Surplus Recalc row 50, V2Slim_Final_4):
+        //   seed year:  TAC = baseTAC + Σ(recalc − baseline) PRE-tax income (full book)
+        //   year Y>seed: TAC = TAC(Y−1) + ΔbaseTAC(Y) + [baseTAC fell ? PRE-tax : AFTER-tax income delta]
+        // Income deltas are full-book (new business + back book) = recFull − origFull.
+        var dlt = function (kind) { return PRODS.reduce(function (s, c) { return s + ((recFull[c].annual[kind][y] || 0) - ((S.baseline.origFull[c].annual[kind] || {})[y] || 0)); }, 0); };
+        var bt = S.surplus.totalSurplus[y] - S.surplus.nonIns[y] + S.surplus.avr[y];   // no-note baseline TAC
+        var tac;
+        if (prevTac === null) { tac = bt + dlt('PTI'); }                               // seed (first year): pre-tax delta
+        else { tac = bt - prevBt + prevTac + ((bt < prevBt) ? dlt('PTI') : dlt('ATI')); }
+        prevTac = tac; prevBt = bt;
+        var id = tac - bt;                                                             // cumulative deviation from baseline TAC (display)
         sr[y] = { prod: prod, allOther: baseSc[y].allOther, tot: tot, postCov: pc, reqCap: rq, tac: tac, ratio: tac / rq, incDelta: id, baseRatio: baseSc[y].ratio };
       });
       applyNoteToSurplus(sr);
