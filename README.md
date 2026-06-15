@@ -10,7 +10,7 @@ efficient-frontier/
 ├── BUILD_STANDARDS.md   # definition of done / recurring-bug checklist
 ├── data/                # workbook-derived inputs (NOT embedded in code)
 ├── src/                 # engine modules: vnb, ev-recalc, rbc-surplus
-├── runner/              # headless scenario runner (100 LHS × 40 stochastic)
+├── runner/              # headless scenario runner (100 LHS × 100 stochastic)
 └── viewer/              # thin six-tab HTML app over results
 ```
 
