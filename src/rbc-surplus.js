@@ -54,6 +54,7 @@ function surplusCalc(ts, surplusRows, tsAdj, years) {
   const modeled = { 'Medicare Supplement': 'Medicare Supplement', 'Hospital Indemnity': 'Hospital Indemnity', 'PreNeed': 'PreNeed' };
   // C-3 (TSC3) is charged in full. The prior NAIC ×0.5 factor was removed 2026-06-15
   // to mirror the EffFrontierEngine_V2Slim_Final workbook; this moves the §1 RBC anchors.
+  const swap = (tsAdj && tsAdj.c1Swap) || {};   // per-year $M moved from PN C-1o (TSC1) to C-1cs (TSC1CS); shifts covariance
   const out = {};
   for (const y of years) {
     // per-product charges
@@ -63,12 +64,13 @@ function surplusCalc(ts, surplusRows, tsAdj, years) {
       for (const k of TSC_KEYS) prod[pn][k] = tsSum(ts, pn, k, y) / 1e6;
     }
     // all other = total(all) - the three; + adjustments to TSC1 and TSC1CS
+    const sw = +swap[y] || 0;
     const allOther = {};
     for (const k of TSC_KEYS) {
       let tot = tsSum(ts, null, k, y) / 1e6;
       let resid = tot - prod['Medicare Supplement'][k] - prod['Hospital Indemnity'][k] - prod['PreNeed'][k];
-      if (k === 'TSC1') resid += tsAdj.G2;
-      if (k === 'TSC1CS') resid += tsAdj.I2;
+      if (k === 'TSC1') resid += tsAdj.G2 - sw;       // C-1o swap: move `sw` out of C1o ...
+      if (k === 'TSC1CS') resid += tsAdj.I2 + sw;     // ... and into C1cs (covariance shift; recalc inherits via baseSc.allOther)
       allOther[k] = resid;
     }
     // totals
@@ -158,19 +160,20 @@ function surplusRecalc(origEV, scalars, ts, surplus, tsAdj, assum, years, preOri
 
 /* ── Surplus Note cash-flow engine ──────────────────────────────────────────
  * Models a surplus note: the company receives `amount` ($M) at `startDate`,
- * pays an upfront fee (amount × fees) at issue, annual interest (amount × rate)
- * on each anniversary month, and repays principal at the end date
- * (= startDate + tenor years).
+ * pays an upfront fee (amount × fees) at issue, QUARTERLY interest
+ * (amount × rate / 4) every three months after issue (including the maturity
+ * month), and repays principal at the end date (= startDate + tenor years).
  *
  * Returns the NET cash flow (cash in − cash out) aggregated by calendar year.
  * Positive net adds to TAC in that year; negative net subtracts. This is the
  * ONLY place the surplus note touches the model — it flows through TAC as an
  * income change and nowhere else.
  *
- * Matches the workbook "Surplus note" tab:
+ * Matches the workbook "Surplus note" tab (quarterly coupon revision 2026-06-15):
  *   cash in   = amount at the start-date month
  *   cash out  = (amount×fees at start month)
- *             + (amount×rate when month==startMonth AND year>=startYear, i.e. each anniversary)
+ *             + (amount×rate/4 every quarter strictly after start: months where
+ *                (month − startMonth) is a multiple of 3, including the maturity month)
  *             + (amount at end-date month)
  *             ... but zero for any month strictly after the end date.
  */
@@ -218,10 +221,11 @@ function surplusNoteAnnual(inputs) {
       let cashIn = 0, cashOut = 0;
       const isStart = (y === start.year && m === start.month);
       const isEnd   = (y === end.year   && m === end.month);
-      const isAnniv = (m === start.month && y >= start.year);
+      const afterStart = (y > start.year) || (y === start.year && m > start.month);
+      const isQuarter  = ((((m - start.month) % 3) + 3) % 3) === 0;   // start month + every 3 months (quarterly coupons)
 
       if (isStart) { cashIn += amount; cashOut += amount * fees; }
-      if (isAnniv && !isEnd) { cashOut += amount * rate; }   // maturity year pays principal only, no interest
+      if (afterStart && isQuarter) { cashOut += amount * rate / 4; }  // quarterly coupon (incl. the maturity month); none at issue
       if (isEnd)   { cashOut += amount; }
 
       out[y] += (cashIn - cashOut);

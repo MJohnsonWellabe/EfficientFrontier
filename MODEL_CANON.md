@@ -18,7 +18,9 @@ Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq
 
 MS recalc IRR under workbook scalars: `0.17763524`
 
-Baseline RBC ratios, 2026–2030: `5.14 / 4.28 / 3.32 / 3.15 / 3.54` (minimum `3.15` in **2029**).
+Baseline RBC ratios, 2026–2030: `5.23 / 4.34 / 3.36 / 3.18 / 3.58` (minimum `3.18` in **2029**).
+
+> **Re-baseline note (2026-06-15b).** RBC ratios moved from `5.14 / 4.28 / 3.32 / 3.15 / 3.54` to mirror **`EffFrontierEngine_V2Slim_Final_1`**: a per-year **PN C-1 swap** (move `$M` from C-1o/`TSC1` to C-1cs/`TSC1CS`, `data/params.json` `ts_adj.c1Swap`, applied in `surplusCalc` allOther; the recalc inherits via `baseSc.allOther`) shifts the covariance and lifts the ratios slightly. The same workbook revision also moved the **surplus note to quarterly coupons** (`surplusNoteAnnual`) — note-adjusted TAC only, **no §1 effect** (the gate is no-note). VNB IRR/NPV and MS recalc IRR unchanged. Baseline min (`3.18`) is still below the §2 **C1** floor (≥ 4.0×).
 
 > **Re-baseline note (2026-06-15).** The five RBC ratios were re-baselined from `5.36 / 4.67 / 3.80 / 3.76 / 4.33` to mirror the **`EffFrontierEngine_V2Slim_Final`** workbook: (a) the NAIC **×0.5 factor on the C-3 (TSC3) charge was removed** (`src/rbc-surplus.js`), so C-3 is now charged in full; and (b) **Input TS** (RBC charge amounts) and **Input Surplus** (Total Surplus, 2026–2035) were rebased from the workbook (`data/InputTS.csv`, `data/InputSurplus.csv`). VNB IRR/NPV and the MS recalc IRR are **unchanged** (Input EV and new-business assumptions untouched). A separate **PN EV (back-book) NIER** schedule was also added (`data/params.json` `Preneed.NIER_EV`; `src/vnb.js`/`src/frontier.js`) — it feeds only the scenario EV-side TAC delta and moves no §1 target. **Note:** the new baseline minimum (`3.15`) is below the §2 **C1** floor (≥ 4.0×), so the unshocked baseline is now C1-infeasible — revisit the C1 threshold if that floor is still intended.
 
