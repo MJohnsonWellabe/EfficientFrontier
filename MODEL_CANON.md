@@ -18,7 +18,9 @@ Standalone VNB basis (`buildVNB` with the default, full-data month width; PN acq
 
 MS recalc IRR under workbook scalars: `0.17763524`
 
-Baseline RBC ratios, 2026–2030: `5.23 / 4.34 / 3.36 / 3.18 / 3.58` (minimum `3.18` in **2029**).
+Baseline RBC ratios, 2026–2030: `5.67 / 5.15 / 4.35 / 4.27 / 4.72` (minimum `4.27` in **2029**).
+
+> **Re-baseline note (2026-06-15c).** RBC ratios moved from `5.23 / 4.34 / 3.36 / 3.18 / 3.58` to mirror **`EffFrontierEngine_V2Slim_Final_4`**: a refresh of the **Input TS** charge amounts (378 cells) and **Input Surplus** Total Surplus (2026–2035), regenerated into `data/InputTS.csv` / `data/InputSurplus.csv`. VNB IRR/NPV and MS recalc IRR unchanged. The baseline minimum is now `4.27` (2029) — back above the §2 **C1** floor (≥ 4.0×). (That workbook revision also changed the Surplus-Recalc TAC roll-forward formula — tracked separately; the engine's scenario-TAC logic is unchanged pending confirmation.)
 
 > **Re-baseline note (2026-06-15b).** RBC ratios moved from `5.14 / 4.28 / 3.32 / 3.15 / 3.54` to mirror **`EffFrontierEngine_V2Slim_Final_1`**: a per-year **PN C-1 swap** (move `$M` from C-1o/`TSC1` to C-1cs/`TSC1CS`, `data/params.json` `ts_adj.c1Swap`, applied in `surplusCalc` allOther; the recalc inherits via `baseSc.allOther`) shifts the covariance and lifts the ratios slightly. The same workbook revision also moved the **surplus note to quarterly coupons** (`surplusNoteAnnual`) — note-adjusted TAC only, **no §1 effect** (the gate is no-note). VNB IRR/NPV and MS recalc IRR unchanged. Baseline min (`3.18`) is still below the §2 **C1** floor (≥ 4.0×).
 
