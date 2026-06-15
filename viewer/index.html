@@ -266,12 +266,13 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       <input type="checkbox" id="sn_on" checked style="width:16px;height:16px"> Enabled
     </label>
   </div>
-  <p class="hint" style="margin-bottom:14px">A surplus note brings in capital at issue, then pays an upfront fee, quarterly interest (one quarter of the annual coupon every three months after issue), and repays principal at maturity. The <strong>net cash flow each year flows through TAC</strong> as an income change — increasing or decreasing total adjusted capital — and touches nothing else in the model.</p>
+  <p class="hint" style="margin-bottom:14px">A surplus note brings in capital at issue and earns investment income on the proceeds, then pays an upfront fee, quarterly interest (one quarter of the annual coupon every three months after issue), and repays principal at maturity. The <strong>net cash flow each year flows through TAC</strong> as an income change — increasing or decreasing total adjusted capital — and touches nothing else in the model.</p>
   <div id="sn_fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
     <label class="f" style="margin:0"><span class="lb">Amount ($M)</span><input type="number" id="sn_amount" value="100" step="5"></label>
     <label class="f" style="margin:0"><span class="lb">Tenor (years)</span><input type="number" id="sn_tenor" value="10" step="1" min="1"></label>
     <label class="f" style="margin:0"><span class="lb">Interest rate (%)</span><input type="number" id="sn_rate" value="9" step="0.25"></label>
     <label class="f" style="margin:0"><span class="lb">Upfront fee (%)</span><input type="number" id="sn_fees" value="3" step="0.25"></label>
+    <label class="f" style="margin:0"><span class="lb">Investment income on note (%)</span><input type="number" id="sn_nier" value="4" step="0.25"></label>
     <label class="f" style="margin:0"><span class="lb">Start date</span><input type="date" id="sn_start" value="2026-06-30"></label>
     <label class="f" style="margin:0"><span class="lb">End date (calculated)</span><input type="text" id="sn_end" value="" readonly style="background:#f2f6f8;color:var(--muted)"></label>
   </div>
@@ -498,7 +499,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 <li class="doc-li"><strong>All-Other (non-modeled) charges</strong> are frozen at baseline.</li>
 </ul>
 <p class="doc-p"><strong>TAC income delta.</strong> TAC for year Y adjusts by the change in after-tax income from year Y across the three modeled products: ΔMS_ATI + ΔPN_ATI + ΔHI_ATI (recalc minus original, full-book basis), applied to the surplus position at year-end Y.</p>
-<p class="doc-p"><strong>Surplus note (default ON, $100M).</strong> An optional surplus note raises capital: the company receives the amount at the start date (less an upfront fee), pays <em>quarterly</em> interest — one quarter of the annual coupon every three months after issue, including the maturity quarter — and repays principal at maturity. The note's net cash flow accumulates into Total Adjusted Capital (it touches the model only through TAC, nowhere else), so the RBC ratio is re-derived from the note-adjusted TAC. Defaults: $100M, 10-year tenor, 9% interest, 3% upfront fee, 2026-06-30 start.</p></div></details>
+<p class="doc-p"><strong>Surplus note (default ON, $100M).</strong> An optional surplus note raises capital: the company receives the amount at the start date (less an upfront fee) and earns monthly investment income on the proceeds (at the note's investment-income rate, from after issue through maturity), pays <em>quarterly</em> interest — one quarter of the annual coupon every three months after issue, including the maturity quarter — and repays principal at maturity. The note's net cash flow accumulates into Total Adjusted Capital (it touches the model only through TAC, nowhere else), so the RBC ratio is re-derived from the note-adjusted TAC. Defaults: $100M, 10-year tenor, 9% interest, 3% upfront fee, 4% investment income, 2026-06-30 start.</p></div></details>
 
 
 

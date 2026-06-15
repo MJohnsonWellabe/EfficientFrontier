@@ -159,10 +159,12 @@ function surplusRecalc(origEV, scalars, ts, surplus, tsAdj, assum, years, preOri
 
 
 /* ── Surplus Note cash-flow engine ──────────────────────────────────────────
- * Models a surplus note: the company receives `amount` ($M) at `startDate`,
- * pays an upfront fee (amount × fees) at issue, QUARTERLY interest
- * (amount × rate / 4) every three months after issue (including the maturity
- * month), and repays principal at the end date (= startDate + tenor years).
+ * Models a surplus note: the company receives `amount` ($M) at `startDate` and
+ * earns monthly investment income on the proceeds (amount × monthly-equiv of
+ * `nierSN`) after issue through maturity; it pays an upfront fee (amount × fees)
+ * at issue, QUARTERLY interest (amount × rate / 4) every three months after issue
+ * (including the maturity month), and repays principal at the end date
+ * (= startDate + tenor years).
  *
  * Returns the NET cash flow (cash in − cash out) aggregated by calendar year.
  * Positive net adds to TAC in that year; negative net subtracts. This is the
@@ -171,6 +173,7 @@ function surplusRecalc(origEV, scalars, ts, surplus, tsAdj, assum, years, preOri
  *
  * Matches the workbook "Surplus note" tab (quarterly coupon revision 2026-06-15):
  *   cash in   = amount at the start-date month
+ *             + amount × ((1+nierSN)^(1/12) − 1) each month after issue through maturity
  *   cash out  = (amount×fees at start month)
  *             + (amount×rate/4 every quarter strictly after start: months where
  *                (month − startMonth) is a multiple of 3, including the maturity month)
@@ -206,6 +209,8 @@ function surplusNoteAnnual(inputs) {
   const rate   = +inputs.rate   || 0;   // annual, decimal
   const fees   = +inputs.fees   || 0;   // decimal of amount
   const tenor  = +inputs.tenor  || 0;
+  const nierSN = +inputs.nierSN || 0;   // annual investment-earnings rate on the note proceeds (decimal)
+  const investRate = nierSN ? Math.pow(1 + nierSN, 1 / 12) - 1 : 0;   // monthly equivalent
   const start  = parseNoteDate(inputs.startDate);
   if (!start || amount === 0) return out;
   const end = noteEndDate(start, tenor);
@@ -225,6 +230,7 @@ function surplusNoteAnnual(inputs) {
       const isQuarter  = ((((m - start.month) % 3) + 3) % 3) === 0;   // start month + every 3 months (quarterly coupons)
 
       if (isStart) { cashIn += amount; cashOut += amount * fees; }
+      if (afterStart) { cashIn += amount * investRate; }              // monthly investment income on the proceeds (after issue through maturity)
       if (afterStart && isQuarter) { cashOut += amount * rate / 4; }  // quarterly coupon (incl. the maturity month); none at issue
       if (isEnd)   { cashOut += amount; }
 

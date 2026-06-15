@@ -6,7 +6,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.10,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-120},
-  surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,startDate:'2026-06-30'},
+  surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
   results:[],years:[],vnbProd:'MS',vnbBasis:'orig',rbcBasis:'orig'};
@@ -334,6 +334,7 @@ function readSurplusNote(){
     tenor:Math.round(g('sn_tenor')),
     rate:g('sn_rate')/100,
     fees:g('sn_fees')/100,
+    nierSN:g('sn_nier')/100,
     startDate:startEl?startEl.value:'2026-06-30'
   };
   refreshSurplusNoteUI();
