@@ -375,7 +375,7 @@ function readInputs(){
   // Preneed-only NIER (investment-yield) shock σ, entered in basis points -> rate units. PN claims σ above IS the mortality σ (drives the coupled claims+decrement shock); PN lapse σ / ρ are unused.
   S.nierSD.PN=Math.max(0,+(document.getElementById('ni_PN')||{value:35}).value)/10000||0;S.nierProcSD.PN=Math.max(0,+(document.getElementById('ni_proc_PN')||{value:15}).value)/10000||0;
   var P=S.params.assum;P.tax=g('a_tax')/100;P.disc=g('a_disc')/100;P.inflation=g('a_infl')/100;P.inflStart=Math.round(g('a_inflyr'));
-  document.querySelectorAll('.assum-inp').forEach(function(inp){var p=inp.dataset.prod,k=inp.dataset.kind,i=+inp.dataset.idx,v=+inp.value||0;if(P.perProduct&&P.perProduct[p]&&P.perProduct[p][k])P.perProduct[p][k][i]=(k==='NIER'?v/100:v);});
+  document.querySelectorAll('.assum-inp').forEach(function(inp){var p=inp.dataset.prod,k=inp.dataset.kind,i=+inp.dataset.idx,v=+inp.value||0;if(P.perProduct&&P.perProduct[p]&&P.perProduct[p][k])P.perProduct[p][k][i]=((k==='NIER'||k==='NIER_EV')?v/100:v);});
   // origSales from per-year table
   PRODS.forEach(function(c){SALES_YEARS.forEach(function(y){var el=document.getElementById('os_'+c+'_'+y);if(el)S.origSales[c][y]=+el.value||S.origSales[c][y];});});
   // forward sales growth (decimals), 2027-2035; 2026 anchor is never grown
@@ -390,9 +390,10 @@ function updateConsSummary(){
 /* ---- buildUI ---- */
 function buildUI(){
   var P=S.params.assum,ys=P.years||[2025,2026,2027,2028,2029,2030];
-  function mkAt(tid,kind,isNIER){
+  function mkAt(tid,kind,isNIER,onlyProd){
+    var prods=onlyProd?[onlyProd]:['Medicare Supplement','Preneed','Hospital Indemnity'];
     var h='<thead><tr><th>Product</th>'+ys.map(function(y){return'<th>'+y+'</th>';}).join('')+'</tr></thead><tbody>';
-    ['Medicare Supplement','Preneed','Hospital Indemnity'].forEach(function(p){
+    prods.forEach(function(p){
       var sh=p==='Medicare Supplement'?'Med Supp':p==='Hospital Indemnity'?'Hosp Ind':p;
       h+='<tr><td>'+sh+'</td>';
       ys.forEach(function(y,i){var arr=(P.perProduct[p]||{})[kind]||[],v=arr[i]||0,d=isNIER?+(v*100).toFixed(3):+v.toFixed(2);h+='<td><input class="assum-inp" type="number" data-prod="'+p+'" data-kind="'+kind+'" data-idx="'+i+'" value="'+d+'" step="'+(isNIER?'.001':'1')+'" onchange="readInputs();computeBaseline()"></td>';});
@@ -402,7 +403,7 @@ function buildUI(){
     // Paste handler
     document.getElementById(tid).addEventListener('paste',function(e){handleAssumPaste(e,tid,kind,isNIER);});
   }
-  mkAt('nierTbl','NIER',true);mkAt('acqTbl','Acquisition Expense',false);mkAt('maintTbl','Maintenance Expense',false);
+  mkAt('nierTbl','NIER',true);mkAt('nierEvTbl','NIER_EV',true,'Preneed');mkAt('acqTbl','Acquisition Expense',false);mkAt('maintTbl','Maintenance Expense',false);
   // Stochastic table — per-product σ defaults from the Risk Calibration section (research-backed)
   // systematic (persistent) + process (annual) σ defaults — see Risk Calibration sections
   var CSDEF={MS:4,PN:3.5,HI:5.5},CPDEF={MS:3,PN:2,HI:4},LSDEF={MS:6.5,PN:4.5,HI:7},LPDEF={MS:3,PN:2,HI:4};
@@ -990,7 +991,8 @@ function renderDebug(){
     var nierP=(useNier&&useNier.proc&&useNier.proc[dbgProd])||null;
     var baseOpts,scenOpts;
     if(dbgIY==='all'){baseOpts={nMonths:360};scenOpts={nMonths:360,nierShift:nierC};}
-    else if(dbgIY==='<2026'){baseOpts={nMonths:360,allBook:true,iy:'<2026'};scenOpts={nMonths:360,allBook:true,iy:'<2026',nierShift:nierP};}
+    else if(dbgIY==='<2026'){baseOpts={nMonths:360,allBook:true,iy:'<2026'};scenOpts={nMonths:360,allBook:true,iy:'<2026',nierShift:nierP};
+      if(dbgProd==='PN'){baseOpts.nierKind='NIER_EV';scenOpts.nierKind='NIER_EV';}}   // PN back book values NII on the EV NIER (matches evFullBook)
     else{baseOpts={nMonths:360,iy:dbgIY};scenOpts={nMonths:360,iy:dbgIY,nierShift:nierC};}
     var oV=EFENG.buildVNB(S.ev,dbgProd,{assum:P},baseOpts);
     var rV=det?EFENG.buildVNB(EFENG.recalcEV(S.ev,det.scalars),dbgProd,{assum:P},scenOpts):null;

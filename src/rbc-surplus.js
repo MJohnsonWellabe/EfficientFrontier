@@ -96,6 +96,10 @@ function loadSurplus(text) {
 //  TAC(Y)  = baseTAC(Y) + incDelta(Y+1), incDelta = dMS_ATI + dPN_ATI + dHI_ATI (new business).
 const PNAME = { MS: 'Medicare Supplement', HI: 'Hospital Indemnity', PN: 'PreNeed' };
 
+// SUPERSEDED / LEGACY (do not rely on): this standalone recalc predates the decomposition
+// and references module-level `R`/`E` that no longer exist here (it throws ReferenceError if
+// called). The LIVE scenario RBC recalc is `frontier.js buildScen`'s inline `sr[]`, which IS
+// PN-EV-NIER-aware via `evFullBook`. Kept (and kept logically correct below) only as a record.
 function surplusRecalc(origEV, scalars, ts, surplus, tsAdj, assum, years, preOrigVNB) {
   const recEV = R.recalcEV(origEV, scalars);
   const base = E.surplusCalc(ts, surplus, tsAdj, years);
@@ -105,7 +109,22 @@ function surplusRecalc(origEV, scalars, ts, surplus, tsAdj, assum, years, preOri
   // per-product new-business income, original vs recalc
   const vnb = {};
   // full book (new business + older <2026 block) so the TAC change captures older policy years
-  for (const code of ['MS', 'PN', 'HI']) vnb[code] = { o: E.buildVNB(origEV, code, { assum }, { nMonths: 360, allBook: true }), r: E.buildVNB(recEV, code, { assum }, { nMonths: 360, allBook: true }) };
+  // PN values its back book (pre-2026 in-force) on the EV NIER schedule (NIER_EV) while new
+  // business stays on NIER — so split PN into new + back and sum the annual flows (mirrors
+  // frontier.js evFullBook). MS/HI use one all-book valuation.
+  const fbAnnual = (ev, code) => {
+    if (code !== 'PN') return E.buildVNB(ev, code, { assum }, { nMonths: 360, allBook: true, pnShift: false });
+    const nb = E.buildVNB(ev, 'PN', { assum }, { nMonths: 360, pnShift: false });
+    const bk = E.buildVNB(ev, 'PN', { assum }, { nMonths: 360, allBook: true, pnShift: false, iy: '<2026', nierKind: 'NIER_EV' });
+    const annual = {}; const keys = new Set([...Object.keys(nb.annual), ...Object.keys(bk.annual)]);
+    for (const k of keys) {
+      const m = {}, a = nb.annual[k] || {}, b = bk.annual[k] || {};
+      for (const y of new Set([...Object.keys(a), ...Object.keys(b)])) m[y] = (a[y] || 0) + (b[y] || 0);
+      annual[k] = m;
+    }
+    return { annual };
+  };
+  for (const code of ['MS', 'PN', 'HI']) vnb[code] = { o: fbAnnual(origEV, code), r: fbAnnual(recEV, code) };
   const incDelta = y => {
     const dMS = (vnb.MS.r.annual.ATI[y] || 0) - (vnb.MS.o.annual.ATI[y] || 0);
     const dPN = (vnb.PN.r.annual.ATI[y] || 0) - (vnb.PN.o.annual.ATI[y] || 0);
