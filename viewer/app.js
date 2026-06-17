@@ -241,37 +241,47 @@ async function init(){
 /* ---- Run ---- */
 async function runFrontier(){
   readInputs();computeBaseline();
-  var n=S.nScen,ns=S.nStoch;
-  S.lastRunSeed=S.seed;                         // remember the seed that produced these results (for export/replay + custom-scenario CRN)
-  F.setSeed(S.seed);                            // reseed: reproducible sales draws + shock bank (same seed -> identical frontier)
-  var msA=lhs(n,S.bounds.MS[0],S.bounds.MS[1]),pnA=lhs(n,S.bounds.PN[0],S.bounds.PN[1]),hiA=lhs(n,S.bounds.HI[0],S.bounds.HI[1]);
-  var BANK=buildShockBank(ns);                 // ONE bank reused across all scenarios (common random numbers)
+  var n=S.nScen;
+  S.lastRunSeed=S.seed;                         // seed that produced these results (export/replay + custom-scenario CRN)
   var fill=document.getElementById('progFill'),pw=document.getElementById('progWrap'),st=document.getElementById('runStatus');
   document.getElementById('runBtn').disabled=true;pw.style.display='block';S.results=[];
-  var _yt=performance.now();                    // time-budget yield clock (fewer macrotasks than k%8)
-  for(var i=0;i<n;i++){
-    var sales={MS:msA[i],PN:pnA[i],HI:hiA[i]};
-    var mc={MS:1,PN:1,HI:1},ml={MS:1,PN:1,HI:1};
-    var det=buildScen(sales,mc,ml);
-    var sIRRs=[],sNPVs=[],sDD=[],sMinRBC=[],stochScalarsList=[];
-    for(var k=0;k<ns;k++){
-      var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;   // CRN: same bank for every scenario
-      stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm),nier:Object.assign({},nm),nierProc:Object.assign({},_s.nmProc)});
-      if(S.slowMode){var sm=buildScen(sales,cm,lm,{combined:_s.nm,proc:_s.nmProc});sIRRs.push(sm.irr26);sNPVs.push(sm.npv26);sDD.push(ddFromCum(sm.cumDE26));sMinRBC.push(sm.minRBC);}
-      else{var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);}
-      if(performance.now()-_yt>40){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';await sleep();_yt=performance.now();}
-    }
-    var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;   // Step 3: CTE-90 downside shortfall ($M)
-    var fails=evalCons(det,S.slowMode?{irrs:sIRRs,minRBCs:sMinRBC}:{irrs:sIRRs});
-    S.results.push({id:i+1,sales:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochMinRBC:S.slowMode?sMinRBC:null,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false});
-    var _r=S.results[S.results.length-1];_r.riskSD=dr.sd;_r.cte90=dr.cte90;_r.semidev=dr.semidev;_r.ddMed=dr.ddMed;_r.ddWorst=dr.ddWorst;_r.stochDD=sDD;
-    fill.style.width=Math.round((i+1)/n*100)+'%';st.textContent=(i+1)+'/'+n+' scenarios…';await sleep();
+  // Heavy sweep runs in a Web Worker so it keeps computing in a background/unfocused tab and never
+  // freezes the UI. Falls back to the main thread (MessageChannel-yield loop) if workers are unavailable.
+  try{
+    if(typeof Worker!=='undefined'){ S.results=await runSweepInWorker(fill,st); }
+    else { S.results=await F.runSweep(mainThreadCallbacks(fill,st)); }
+  }catch(err){
+    console.warn('Worker sweep failed; falling back to main thread.',err);
+    S.results=await F.runSweep(mainThreadCallbacks(fill,st));
   }
   markFrontier(S.results);populateSelectors();
   pw.style.display='none';document.getElementById('runBtn').disabled=false;
   var nfr=S.results.filter(function(r){return r.isFrontier;}).length,nfe=S.results.filter(function(r){return r.feasible;}).length;
   st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed;
   showTab('frontier');
+}
+function mainThreadCallbacks(fill,st){
+  return {
+    onTick:function(i,k,n,ns){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';},
+    onYield:sleep,
+    onProgress:function(done,n){fill.style.width=Math.round(done/n*100)+'%';st.textContent=done+'/'+n+' scenarios…';}
+  };
+}
+function runSweepInWorker(fill,st){
+  return new Promise(function(resolve,reject){
+    var w=new Worker('worker.js');
+    var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
+      seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
+      claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
+      procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years};
+    w.onmessage=function(e){var d=e.data;
+      if(d.type==='progress'){fill.style.width=Math.round(d.done/d.n*100)+'%';st.textContent=d.done+'/'+d.n+' scenarios…';}
+      else if(d.type==='done'){w.terminate();resolve(d.results);}
+      else if(d.type==='error'){w.terminate();reject(new Error(d.message));}
+    };
+    w.onerror=function(ev){w.terminate();reject((ev&&ev.error)||new Error('worker load/runtime error'));};
+    w.postMessage({type:'run',evText:EMBEDDED.ev,tsText:EMBEDDED.ts,surplusText:EMBEDDED.surplus,cfg:cfg});
+  });
 }
 
 /* ---- Custom scenario: test a user-entered sales mix ---- */

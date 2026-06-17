@@ -16,52 +16,18 @@ var D = require('./defaults.js');
 var ROOT = path.join(__dirname, '..');
 var DATA = path.join(ROOT, 'data');
 
-function runFrontier(S, F) {
-  var n = S.nScen, ns = S.nStoch;
-  F.setSeed(F.STOCH_SEED);                          // reseed: reproducible sales draws + shock bank
-  var msA = F.lhs(n, S.bounds.MS[0], S.bounds.MS[1]),
-      pnA = F.lhs(n, S.bounds.PN[0], S.bounds.PN[1]),
-      hiA = F.lhs(n, S.bounds.HI[0], S.bounds.HI[1]);
-  var BANK = F.buildShockBank(ns);                  // ONE bank reused across all scenarios (CRN)
-  S.results = [];
-  for (var i = 0; i < n; i++) {
-    var sales = { MS: msA[i], PN: pnA[i], HI: hiA[i] };
-    var mc = { MS: 1, PN: 1, HI: 1 }, ml = { MS: 1, PN: 1, HI: 1 };
-    var det = F.buildScen(sales, mc, ml);
-    var sIRRs = [], sNPVs = [], sDD = [], sMinRBC = [];
-    for (var k = 0; k < ns; k++) {
-      var _s = F.shockFromBank(BANK[k]);
-      if (S.slowMode) {                                                        // Slow mode: full RBC recompute per draw
-        var sm = F.buildScen(sales, _s.cm, _s.lm, { combined: _s.nm, proc: _s.nmProc });
-        var dd = 0; for (var yy = 2026; yy <= 2055; yy++) { var cv = sm.cumDE26[yy]; if (cv != null && cv < dd) dd = cv; }
-        sIRRs.push(sm.irr26); sNPVs.push(sm.npv26); sDD.push(dd); sMinRBC.push(sm.minRBC);
-      } else {
-        var sm = F.stochMetrics(sales, _s.cm, _s.lm, _s.nm);
-        sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd);
-      }
-    }
-    var dr = F.downsideRisk(sNPVs, sDD, det.npv26), risk = dr.risk;
-    var fails = F.evalCons(det, S.slowMode ? { irrs: sIRRs, minRBCs: sMinRBC } : { irrs: sIRRs });
-    S.results.push({
-      id: i + 1, sales: sales, portIRR: det.irr26, portNPV: det.npv26, wtdIRR: det.wtdIRR, risk: risk,
-      portIRRAll: det.portIRR, portNPVAll: det.portNPV, irr26: det.irr26, npv26: det.npv26,
-      minRBC: det.minRBC, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst,
-      stochIRRs: sIRRs, stochNPVs: sNPVs, stochDD: sDD, stochMinRBC: S.slowMode ? sMinRBC : null,
-      failures: fails, feasible: fails.length === 0, isFrontier: false
-    });
-  }
-  F.markFrontier(S.results);
-  return S.results;
-}
+// Headless sweep — uses the SAME shared src/frontier.js runSweep as the viewer (worker + fallback),
+// so headless and in-browser results are identical for a given seed. (Tight loop, no yield callbacks.)
+function runFrontier(S, F) { return F.runSweep(); }
 
-function main() {
+async function main() {
   var mode = (process.argv[2] || 'zero').toLowerCase();
   var growth = (mode === 'default') ? D.defaultGrowth() : D.zeroGrowth();
   var S = D.buildState(EFENG, DATA, growth);
   if (process.argv.indexOf('slow') >= 0) S.slowMode = true;   // Slow mode: per-draw trough-RBC tail
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
-  var results = runFrontier(S, F);
+  var results = await runFrontier(S, F);
 
   var out = {
     meta: {
@@ -99,4 +65,4 @@ function main() {
   console.log('wrote ' + outFile);
 }
 
-main();
+main().catch(function (e) { console.error(e); process.exit(1); });

@@ -21,11 +21,16 @@ You are working on a **capital deployment / efficient frontier** model for Wella
   scalars + two-regime in-force roll-forward), `rbc-surplus.js` (NAIC covariance charges, required
   capital, scenario TAC, surplus note). `engine.js` assembles the three for Node. `frontier.js` is
   the shared scenario/efficient-frontier compute (incl. the sales-growth `mkScalars`), used by both
-  the viewer and the runner.
-- `runner/` — headless scenario runner: `run.js` (100 LHS × 100 stochastic → `runner/results/*.json`),
+  the viewer and the runner. The whole frontier sweep is the **one shared `frontier.js → runSweep`**
+  (async; optional yield/progress callbacks) — called by the viewer worker, the viewer main-thread
+  fallback, and the headless runner, so all three give identical results for a given seed.
+- `runner/` — headless scenario runner: `run.js` (100 LHS × 100 stochastic via `runSweep` → `runner/results/*.json`),
   `defaults.js` (config defaults mirroring the viewer), `validate.js` (the §1 gate).
 - `viewer/` — the six-tab HTML app: `index.html` loads the `src/` modules + Chart.js and fetches
   `data/`; `app.js` is the rendering/UI layer (DOM bindings inside `DOMContentLoaded` via `bindAll`).
+  The heavy sweep runs in a **Web Worker** (`viewer/worker.js`, which `importScripts` the `src/`
+  modules and calls `runSweep`) so it keeps computing in a backgrounded/unfocused tab and never
+  freezes the UI; if `Worker` is unavailable it falls back to `runSweep` on the main thread.
 - `data/` — workbook-derived inputs: `InputEV.csv`, `InputTS.csv`, `InputSurplus.csv`, `params.json`.
 - `legacy/EfficientFrontier-29.html` — the proven single-file reference. **Do not edit or delete it.**
 

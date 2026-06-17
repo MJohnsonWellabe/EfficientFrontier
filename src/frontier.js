@@ -285,6 +285,38 @@
       feas.forEach(function (s) { var dom = feas.some(function (o) { return o !== s && o.portNPV >= s.portNPV && riskFn(o) <= riskFn(s) && (o.portNPV > s.portNPV || riskFn(o) < riskFn(s)); }); if (!dom) set[s.id] = true; });
       return set;
     }
+    function _ddFromCum(cum) { var d = 0; for (var y = 2026; y <= 2055; y++) { var v = cum[y]; if (v != null && v < d) d = v; } return d; }
+    var _now = (typeof performance !== 'undefined' && performance.now) ? function () { return performance.now(); } : function () { return Date.now(); };
+    // Shared frontier sweep — one source of compute truth for the viewer Web Worker, the viewer
+    // main-thread fallback, and the headless runner. Async so the fallback can yield via opts.onYield
+    // (time-budgeted); the worker/runner pass no callbacks and run a tight, unthrottled loop.
+    // opts: { onProgress(done,n), onYield(), onTick(i,k,n,ns) } — all optional. Returns marked results.
+    async function runSweep(opts) {
+      opts = opts || {};
+      var n = S.nScen, ns = S.nStoch, slow = S.slowMode;
+      setSeed(S.seed != null ? S.seed : STOCH_SEED);
+      var msA = lhs(n, S.bounds.MS[0], S.bounds.MS[1]), pnA = lhs(n, S.bounds.PN[0], S.bounds.PN[1]), hiA = lhs(n, S.bounds.HI[0], S.bounds.HI[1]);
+      var BANK = buildShockBank(ns), results = [], _yt = _now();
+      for (var i = 0; i < n; i++) {
+        var sales = { MS: msA[i], PN: pnA[i], HI: hiA[i] }, u = { MS: 1, PN: 1, HI: 1 };
+        var det = buildScen(sales, u, u);
+        var sIRRs = [], sNPVs = [], sDD = [], sMinRBC = [], stochScalarsList = [];
+        for (var k = 0; k < ns; k++) {
+          var _s = shockFromBank(BANK[k]), cm = _s.cm, lm = _s.lm, nm = _s.nm;
+          stochScalarsList.push({ claims: Object.assign({}, cm), lapse: Object.assign({}, lm), nier: Object.assign({}, nm), nierProc: Object.assign({}, _s.nmProc) });
+          if (slow) { var sm = buildScen(sales, cm, lm, { combined: _s.nm, proc: _s.nmProc }); sIRRs.push(sm.irr26); sNPVs.push(sm.npv26); sDD.push(_ddFromCum(sm.cumDE26)); sMinRBC.push(sm.minRBC); }
+          else { var sm = stochMetrics(sales, cm, lm, nm); sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd); }
+          if (opts.onYield && _now() - _yt > 40) { if (opts.onTick) opts.onTick(i, k, n, ns); await opts.onYield(); _yt = _now(); }
+        }
+        var dr = downsideRisk(sNPVs, sDD, det.npv26);
+        var fails = evalCons(det, slow ? { irrs: sIRRs, minRBCs: sMinRBC } : { irrs: sIRRs });
+        results.push({ id: i + 1, sales: sales, portIRR: det.irr26, portNPV: det.npv26, wtdIRR: det.wtdIRR, risk: dr.risk, portIRRAll: det.portIRR, portNPVAll: det.portNPV, irr26: det.irr26, npv26: det.npv26, de26: det.de26, cumDE26: det.cumDE26, minRBC: det.minRBC, de: det.de, cumDE: det.cumDE, atiBopCS: det.atiBopCS, maxDecline: det.maxDecline, tacChg: det.tacChg, scalars: det.scalars, stochIRRs: sIRRs, stochNPVs: sNPVs, stochMinRBC: slow ? sMinRBC : null, stochScalars: stochScalarsList, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst, stochDD: sDD, failures: fails, feasible: fails.length === 0, isFrontier: false });
+        if (opts.onProgress) opts.onProgress(i + 1, n);
+        if (opts.onYield) await opts.onYield();
+      }
+      markFrontier(results);
+      return results;
+    }
 
     return {
       setSeed: setSeed, mulberry32: mulberry32, nrand: nrand, lhs: lhs, nvec: nvec,
@@ -292,7 +324,7 @@
       pctile: pctile, stddev: stddev, cteLow: cteLow, semidevBelow: semidevBelow,
       downsideRisk: downsideRisk, cteShortfall: cteShortfall, cteShortfallScaled: cteShortfallScaled,
       applyNoteToSurplus: applyNoteToSurplus, computeBaseline: computeBaseline, mkScalars: mkScalars, buildScen: buildScen,
-      stochMetrics: stochMetrics, evalCons: evalCons, markFrontier: markFrontier, frontierSetBy: frontierSetBy,
+      stochMetrics: stochMetrics, evalCons: evalCons, markFrontier: markFrontier, frontierSetBy: frontierSetBy, runSweep: runSweep,
       STOCH_SEED: STOCH_SEED, NYEARS: NYEARS, fmt: fmt, pct: pct, rx: rx
     };
   }
