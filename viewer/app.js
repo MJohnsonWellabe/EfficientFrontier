@@ -4,7 +4,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   origSales:{MS:{2026:212.92,2027:200,2028:200,2029:200,2030:200},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
-  nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,
+  nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,_wakeLock:null,_running:false,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.25},
   surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
@@ -239,50 +239,126 @@ async function init(){
 /* ---- Scalars / Scenario ---- */
 
 /* ---- Run ---- */
+/* ---- Mobile resilience: Screen Wake Lock + IndexedDB checkpoint/resume ----
+   A long run left in the foreground shouldn't be paused by the screen sleeping (Wake Lock); and if the
+   tab is backgrounded long enough to be frozen/discarded (common on phones), the run shouldn't restart
+   from zero. Each completed scenario is persisted to IndexedDB keyed by a signature of the run config;
+   on the next Run with the same inputs, the saved scenarios seed runSweep's startResults so it resumes
+   where it left off. Any input change → new signature → fresh run. */
+function acquireWakeLock(){
+  if(typeof navigator==='undefined' || !('wakeLock' in navigator)) return Promise.resolve();
+  return navigator.wakeLock.request('screen').then(function(wl){S._wakeLock=wl;}).catch(function(){/* unsupported / denied — harmless */});
+}
+function releaseWakeLock(){ if(S._wakeLock){try{S._wakeLock.release();}catch(e){} S._wakeLock=null;} }
+
+// Signature of everything that determines the run's results (must be read AFTER readInputs()).
+function runSignature(){
+  return JSON.stringify({seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
+    bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
+    claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
+    procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years});
+}
+var _IDB_NAME='ef_checkpoints',_IDB_STORE='scenarios',_dbP=null;
+function _db(){
+  if(_dbP) return _dbP;
+  _dbP=new Promise(function(res,rej){
+    if(typeof indexedDB==='undefined'){rej(new Error('no IndexedDB'));return;}
+    var req=indexedDB.open(_IDB_NAME,1);
+    req.onupgradeneeded=function(){var db=req.result; if(!db.objectStoreNames.contains(_IDB_STORE)){var os=db.createObjectStore(_IDB_STORE,{keyPath:'key'}); os.createIndex('sig','sig',{unique:false});}};
+    req.onsuccess=function(){res(req.result);};
+    req.onerror=function(){rej(req.error);};
+  });
+  _dbP.catch(function(){_dbP=null;});   // allow retry if the open failed
+  return _dbP;
+}
+function idbPutResult(sig,i,result){   // fire-and-forget per scenario
+  return _db().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(_IDB_STORE,'readwrite');
+    tx.objectStore(_IDB_STORE).put({key:sig+'|'+i,sig:sig,i:i,result:result});
+    tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);};
+  });}).catch(function(){/* persistence is best-effort */});
+}
+function idbLoad(sig){   // contiguous prefix of saved scenarios (0..k-1)
+  return _db().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(_IDB_STORE,'readonly');
+    var req=tx.objectStore(_IDB_STORE).index('sig').getAll(IDBKeyRange.only(sig));
+    req.onsuccess=function(){var byI={}; (req.result||[]).forEach(function(r){byI[r.i]=r.result;}); var arr=[]; for(var i=0;byI[i]!==undefined;i++)arr.push(byI[i]); res(arr);};
+    req.onerror=function(){rej(req.error);};
+  });}).catch(function(){return [];});
+}
+function idbClear(sig){   // drop this run's checkpoint (called on completion)
+  return _db().then(function(db){return new Promise(function(res){
+    var tx=db.transaction(_IDB_STORE,'readwrite');
+    var req=tx.objectStore(_IDB_STORE).index('sig').openCursor(IDBKeyRange.only(sig));
+    req.onsuccess=function(){var c=req.result; if(c){c.delete();c.continue();}};
+    tx.oncomplete=function(){res();}; tx.onerror=function(){res();};
+  });}).catch(function(){});
+}
+function idbClearExcept(sig){   // evict stale checkpoints from prior configs so storage doesn't grow
+  return _db().then(function(db){return new Promise(function(res){
+    var tx=db.transaction(_IDB_STORE,'readwrite');
+    var req=tx.objectStore(_IDB_STORE).openCursor();
+    req.onsuccess=function(){var c=req.result; if(c){ if(c.value.sig!==sig)c.delete(); c.continue();}};
+    tx.oncomplete=function(){res();}; tx.onerror=function(){res();};
+  });}).catch(function(){});
+}
+
 async function runFrontier(){
   readInputs();computeBaseline();
   var n=S.nScen;
   S.lastRunSeed=S.seed;                         // seed that produced these results (export/replay + custom-scenario CRN)
   var fill=document.getElementById('progFill'),pw=document.getElementById('progWrap'),st=document.getElementById('runStatus');
   document.getElementById('runBtn').disabled=true;pw.style.display='block';S.results=[];
+  var sig=runSignature(),resume=[];
+  await idbClearExcept(sig);                     // keep only the current config's checkpoint
+  resume=await idbLoad(sig);                     // resume any saved scenarios for these exact inputs
+  if(resume.length>n)resume=resume.slice(0,n);
+  var resumedFrom=resume.length;
+  S._running=true; await acquireWakeLock();       // keep the screen awake for the duration of a foreground run
   // Heavy sweep runs in a Web Worker so it keeps computing in a background/unfocused tab and never
   // freezes the UI. Falls back to the main thread (MessageChannel-yield loop) if workers are unavailable.
   var ran='Web Worker',failReason='';
   try{
-    if(typeof Worker!=='undefined'){ S.results=await runSweepInWorker(fill,st); }
-    else { ran='main thread';failReason='this browser has no Web Worker support';S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread')); }
+    if(typeof Worker!=='undefined'){ S.results=await runSweepInWorker(fill,st,sig,resume,resumedFrom); }
+    else { ran='main thread';failReason='this browser has no Web Worker support';S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread',sig,resume,n)); }
   }catch(err){
     ran='main thread';failReason=(err&&err.message)||String(err);
     console.error('Web Worker sweep failed — running on the main thread instead (it will stall when the tab is backgrounded). Reason:',err);
-    S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread'));
-  }
+    var resume2=await idbLoad(sig);               // pick up whatever the worker persisted before failing
+    S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread',sig,resume2,n));
+  }finally{ S._running=false; releaseWakeLock(); }
   markFrontier(S.results);populateSelectors();
+  await idbClear(sig);                            // run complete — drop the checkpoint
   pw.style.display='none';document.getElementById('runBtn').disabled=false;
   var nfr=S.results.filter(function(r){return r.isFrontier;}).length,nfe=S.results.filter(function(r){return r.feasible;}).length;
-  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed+'  ·  '+ran+(failReason?' (worker unavailable: '+failReason+')':'');
+  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed+'  ·  '+ran+(resumedFrom>0?'  ·  resumed '+resumedFrom+'/'+n:'')+(failReason?' (worker unavailable: '+failReason+')':'');
   showTab('frontier');
 }
-function mainThreadCallbacks(fill,st,label){
+function mainThreadCallbacks(fill,st,label,sig,resume,n){
+  var resumedFrom=(resume&&resume.length)||0;
   return {
+    startResults:(resume&&resume.length)?resume:null,
+    onPartial:function(result,i){idbPutResult(sig,i,result);},   // persist each scenario
     onTick:function(i,k,n,ns){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';},
     onYield:sleep,
-    onProgress:function(done,n){fill.style.width=Math.round(done/n*100)+'%';st.textContent=done+'/'+n+' scenarios… · '+(label||'main thread');}
+    onProgress:function(done,n){fill.style.width=Math.round(done/n*100)+'%';st.textContent=done+'/'+n+' scenarios… · '+(label||'main thread')+(resumedFrom>0?' (resumed '+resumedFrom+'/'+n+')':'');}
   };
 }
-function runSweepInWorker(fill,st){
+function runSweepInWorker(fill,st,sig,resume,resumedFrom){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js?v=216');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
+    var w=new Worker('worker.js?v=217');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
     var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
       procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years};
     w.onmessage=function(e){var d=e.data;
-      if(d.type==='progress'){fill.style.width=Math.round(d.done/d.n*100)+'%';st.textContent=d.done+'/'+d.n+' scenarios… · Web Worker';}
+      if(d.type==='partial'){idbPutResult(sig,d.i,d.result);}   // persist each completed scenario
+      else if(d.type==='progress'){fill.style.width=Math.round(d.done/d.n*100)+'%';st.textContent=d.done+'/'+d.n+' scenarios… · Web Worker'+(resumedFrom>0?' (resumed '+resumedFrom+'/'+d.n+')':'');}
       else if(d.type==='done'){w.terminate();resolve(d.results);}
       else if(d.type==='error'){w.terminate();reject(new Error(d.message));}
     };
     w.onerror=function(ev){w.terminate();reject((ev&&ev.error)||new Error('worker load/runtime error'));};
-    w.postMessage({type:'run',evText:EMBEDDED.ev,tsText:EMBEDDED.ts,surplusText:EMBEDDED.surplus,cfg:cfg});
+    w.postMessage({type:'run',evText:EMBEDDED.ev,tsText:EMBEDDED.ts,surplusText:EMBEDDED.surplus,cfg:cfg,startResults:(resume&&resume.length)?resume:null});
   });
 }
 
@@ -1227,6 +1303,8 @@ function showTab(t){
 }
 function bindAll(){
 document.getElementById('nav').addEventListener('click',function(e){if(e.target.tagName==='BUTTON'&&e.target.dataset.tab)showTab(e.target.dataset.tab);});
+// Screen Wake Locks are auto-released when the page is hidden; re-acquire on return if a run is still going.
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&S._running&&!S._wakeLock)acquireWakeLock();});
 document.getElementById('runBtn').addEventListener('click',function(){readInputs();computeBaseline();runFrontier();});
 (function(){
   refreshCsSalesUI();

@@ -60,6 +60,19 @@ Pages clients don't keep running stale cached code. The viewer's run-status line
 the **Web Worker** or fell back to the **main thread** (with the failure reason) — use it to confirm the
 off-thread path is active.
 
+## Mobile resilience (Wake Lock + checkpoint/resume)
+A phone freezes/discards a backgrounded tab (worker included), so a long run can't keep counting while
+away. Instead runs are made **resilient**: (1) `viewer/app.js → runFrontier` requests a **Screen Wake
+Lock** for the duration of a foreground run (re-acquired on `visibilitychange` since the OS drops it when
+hidden), so the screen sleeping won't pause it; and (2) every completed scenario is **persisted to
+IndexedDB** (DB `ef_checkpoints`) keyed by a `runSignature()` of the run config — on the next Run with the
+**same inputs**, the saved scenarios seed `runSweep`'s `startResults` so it resumes instead of restarting,
+and the checkpoint is cleared on completion. Any input change → new signature → fresh run. `runSweep`'s
+`startResults`/`onPartial` opts are **optional and must not alter the default (gate-verified) path** — a
+normal run is byte-identical (verified: NEW==OLD code on the zero-growth frontier; resume reproduces the
+identical full set). Note: a randomized seed only resumes within the same session (the seed input reverts
+to its default on a full reload, so a reloaded random-seed run starts fresh — by design).
+
 ## Access gate (client-side only)
 The Pages site is password-gated: the **root `index.html`** is a landing page that checks a password
 and, on success, sets `sessionStorage.ef_auth` and forwards to `viewer/index.html`; an early guard

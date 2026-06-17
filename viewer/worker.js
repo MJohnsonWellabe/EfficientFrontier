@@ -26,7 +26,11 @@ self.onmessage = function (e) {
     var S = buildStateFromMsg(d);
     var F = self.EFFRONTIER.create(S, self.EFENG);
     F.computeBaseline();
-    F.runSweep({ onProgress: function (done, n) { self.postMessage({ type: 'progress', done: done, n: n }); } })
+    F.runSweep({
+      startResults: (d.startResults && d.startResults.length) ? d.startResults : null,   // resume from a checkpoint (see app.js IndexedDB layer)
+      onProgress: function (done, n) { self.postMessage({ type: 'progress', done: done, n: n }); },
+      onPartial: function (result, i) { self.postMessage({ type: 'partial', result: result, i: i }); }   // stream each scenario for persistence
+    })
       .then(function (results) { self.postMessage({ type: 'done', results: results }); })
       .catch(function (err) { self.postMessage({ type: 'error', message: String((err && err.stack) || err) }); });
   } catch (err) {

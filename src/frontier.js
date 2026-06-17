@@ -290,14 +290,20 @@
     // Shared frontier sweep — one source of compute truth for the viewer Web Worker, the viewer
     // main-thread fallback, and the headless runner. Async so the fallback can yield via opts.onYield
     // (time-budgeted); the worker/runner pass no callbacks and run a tight, unthrottled loop.
-    // opts: { onProgress(done,n), onYield(), onTick(i,k,n,ns) } — all optional. Returns marked results.
+    // opts: { onProgress(done,n), onYield(), onTick(i,k,n,ns), startResults, onPartial(result,i) } — all optional.
+    // startResults seeds `results` with already-computed scenarios (checkpoint/resume): the LHS arrays and
+    // shock BANK are prebuilt from the seed and the per-scenario compute reads only BANK[k]/msA[i] (no
+    // sequential RNG in the loop), so resuming at index startResults.length reproduces the identical full
+    // set for a given seed. onPartial streams each completed scenario for persistence. Both are no-ops when
+    // absent, so a normal run is byte-identical to before (validation gate). Returns marked results.
     async function runSweep(opts) {
       opts = opts || {};
       var n = S.nScen, ns = S.nStoch, slow = S.slowMode;
       setSeed(S.seed != null ? S.seed : STOCH_SEED);
       var msA = lhs(n, S.bounds.MS[0], S.bounds.MS[1]), pnA = lhs(n, S.bounds.PN[0], S.bounds.PN[1]), hiA = lhs(n, S.bounds.HI[0], S.bounds.HI[1]);
-      var BANK = buildShockBank(ns), results = [], _yt = _now();
-      for (var i = 0; i < n; i++) {
+      var BANK = buildShockBank(ns), _yt = _now();
+      var results = (opts.startResults && opts.startResults.length) ? opts.startResults.slice(0, n) : [];
+      for (var i = results.length; i < n; i++) {
         var sales = { MS: msA[i], PN: pnA[i], HI: hiA[i] }, u = { MS: 1, PN: 1, HI: 1 };
         var det = buildScen(sales, u, u);
         var sIRRs = [], sNPVs = [], sDD = [], sMinRBC = [], stochScalarsList = [];
@@ -311,6 +317,7 @@
         var dr = downsideRisk(sNPVs, sDD, det.npv26);
         var fails = evalCons(det, slow ? { irrs: sIRRs, minRBCs: sMinRBC } : { irrs: sIRRs });
         results.push({ id: i + 1, sales: sales, portIRR: det.irr26, portNPV: det.npv26, wtdIRR: det.wtdIRR, risk: dr.risk, portIRRAll: det.portIRR, portNPVAll: det.portNPV, irr26: det.irr26, npv26: det.npv26, de26: det.de26, cumDE26: det.cumDE26, minRBC: det.minRBC, de: det.de, cumDE: det.cumDE, atiBopCS: det.atiBopCS, maxDecline: det.maxDecline, tacChg: det.tacChg, scalars: det.scalars, stochIRRs: sIRRs, stochNPVs: sNPVs, stochMinRBC: slow ? sMinRBC : null, stochScalars: stochScalarsList, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst, stochDD: sDD, failures: fails, feasible: fails.length === 0, isFrontier: false });
+        if (opts.onPartial) opts.onPartial(results[results.length - 1], i);
         if (opts.onProgress) opts.onProgress(i + 1, n);
         if (opts.onYield) await opts.onYield();
       }
