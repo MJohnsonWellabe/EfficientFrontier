@@ -21,3 +21,35 @@ efficient-frontier/
 3. Review the diff, confirm the targets still match to full precision, commit.
 
 After that, every future change is a targeted edit against files on disk — no more re-emitting the whole file through a chat window.
+
+## Backups
+
+This repo auto-mirrors itself to a second GitHub repo, **`EFBackup`**, so the
+project survives this repo being accidentally deleted. A GitHub Action
+(`.github/workflows/backup-mirror.yml`) mirror-pushes the whole repo (every
+branch, tag, and the full history) into `EFBackup` on **every push**, once
+**daily** as a safety net, and on demand from the **Actions → Backup mirror to
+EFBackup → Run workflow** button. `EFBackup` ends up byte-for-byte aligned with
+`main`.
+
+### One-time setup
+GitHub's built-in token can only touch this repo, so pushing to `EFBackup`
+needs one token you create once:
+
+1. Create a **fine-grained Personal Access Token**
+   (GitHub → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens): **Repository access → Only select repositories →
+   `EFBackup`**, and under **Permissions → Repository permissions** set
+   **Contents: Read and write**. Copy the token.
+2. In **this** repo: **Settings → Secrets and variables → Actions →
+   New repository secret**, name it exactly **`BACKUP_TOKEN`**, paste the
+   token, save.
+
+That's it — every push to this repo now auto-mirrors to `EFBackup`. (If
+`EFBackup` lives under a *different* account/org than this repo, edit the one
+`BACKUP_REPO:` line in `.github/workflows/backup-mirror.yml` to point at it.)
+
+### Restoring from the backup
+If this repo is ever lost, `git clone https://github.com/<owner>/EFBackup.git`
+gives you the full history back. To fully re-establish the project, create a
+fresh empty repo and `git push --mirror` the clone into it.
