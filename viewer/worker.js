@@ -3,7 +3,8 @@
    run keeps progressing (and the UI never freezes) whether or not the tab is focused. It loads
    the SAME engine modules as the viewer and calls the SAME src/frontier.js runSweep, so results
    are bit-identical to a main-thread run for a given seed. */
-importScripts('../src/vnb.js', '../src/ev-recalc.js', '../src/rbc-surplus.js', '../src/frontier.js');
+var _v = self.location.search || '';   // carry the ?v=… cache-bust token from new Worker('worker.js?v=…')
+importScripts('../src/vnb.js' + _v, '../src/ev-recalc.js' + _v, '../src/rbc-surplus.js' + _v, '../src/frontier.js' + _v);
 
 // Rebuild the engine state from the posted texts + config (mirrors the viewer's init + readInputs
 // and the runner's buildState — the engine reads these fields off S).

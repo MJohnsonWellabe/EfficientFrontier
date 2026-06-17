@@ -53,6 +53,13 @@ powershell -NoProfile -Command "$root=(Get-Location).Path; $l=[System.Net.HttpLi
 Note: a web server started inside a cloud/remote session is **not reachable** from Matt's browser —
 local viewing always runs on his own machine after `git pull origin main`.
 
+**Cache-busting (GitHub Pages):** `viewer/index.html` loads the engine + `app.js` with a `?v=<token>`
+query, and `app.js` spawns the worker as `worker.js?v=<token>` (the worker forwards that token to its
+`importScripts`). **Bump the token (all of them, same value) whenever you change viewer/engine JS**, so
+Pages clients don't keep running stale cached code. The viewer's run-status line shows whether a run used
+the **Web Worker** or fell back to the **main thread** (with the failure reason) — use it to confirm the
+off-thread path is active.
+
 ## Access gate (client-side only)
 The Pages site is password-gated: the **root `index.html`** is a landing page that checks a password
 and, on success, sets `sessionStorage.ef_auth` and forwards to `viewer/index.html`; an early guard

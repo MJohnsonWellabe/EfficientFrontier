@@ -247,35 +247,37 @@ async function runFrontier(){
   document.getElementById('runBtn').disabled=true;pw.style.display='block';S.results=[];
   // Heavy sweep runs in a Web Worker so it keeps computing in a background/unfocused tab and never
   // freezes the UI. Falls back to the main thread (MessageChannel-yield loop) if workers are unavailable.
+  var ran='Web Worker',failReason='';
   try{
     if(typeof Worker!=='undefined'){ S.results=await runSweepInWorker(fill,st); }
-    else { S.results=await F.runSweep(mainThreadCallbacks(fill,st)); }
+    else { ran='main thread';failReason='this browser has no Web Worker support';S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread')); }
   }catch(err){
-    console.warn('Worker sweep failed; falling back to main thread.',err);
-    S.results=await F.runSweep(mainThreadCallbacks(fill,st));
+    ran='main thread';failReason=(err&&err.message)||String(err);
+    console.error('Web Worker sweep failed — running on the main thread instead (it will stall when the tab is backgrounded). Reason:',err);
+    S.results=await F.runSweep(mainThreadCallbacks(fill,st,'main thread'));
   }
   markFrontier(S.results);populateSelectors();
   pw.style.display='none';document.getElementById('runBtn').disabled=false;
   var nfr=S.results.filter(function(r){return r.isFrontier;}).length,nfe=S.results.filter(function(r){return r.feasible;}).length;
-  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed;
+  st.textContent=nfr+' frontier / '+nfe+' feasible of '+n+'  ·  seed '+S.lastRunSeed+'  ·  '+ran+(failReason?' (worker unavailable: '+failReason+')':'');
   showTab('frontier');
 }
-function mainThreadCallbacks(fill,st){
+function mainThreadCallbacks(fill,st,label){
   return {
     onTick:function(i,k,n,ns){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';},
     onYield:sleep,
-    onProgress:function(done,n){fill.style.width=Math.round(done/n*100)+'%';st.textContent=done+'/'+n+' scenarios…';}
+    onProgress:function(done,n){fill.style.width=Math.round(done/n*100)+'%';st.textContent=done+'/'+n+' scenarios… · '+(label||'main thread');}
   };
 }
 function runSweepInWorker(fill,st){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js');
+    var w=new Worker('worker.js?v=216');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
     var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
       procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years};
     w.onmessage=function(e){var d=e.data;
-      if(d.type==='progress'){fill.style.width=Math.round(d.done/d.n*100)+'%';st.textContent=d.done+'/'+d.n+' scenarios…';}
+      if(d.type==='progress'){fill.style.width=Math.round(d.done/d.n*100)+'%';st.textContent=d.done+'/'+d.n+' scenarios… · Web Worker';}
       else if(d.type==='done'){w.terminate();resolve(d.results);}
       else if(d.type==='error'){w.terminate();reject(new Error(d.message));}
     };
