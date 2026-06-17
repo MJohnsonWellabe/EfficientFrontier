@@ -270,11 +270,11 @@
       if (stochR && stochR.irrs && stochR.irrs.length) { var bl = stochR.irrs.filter(function (x) { return x != null && x < c.irrA; }).length, prob = bl / stochR.irrs.length; if (prob > c.irrB) f.push(lbl(4, 'IRR_TAIL', 'P(2026-issue IRR<' + pct(c.irrA) + ')=' + pct(prob) + ' > ' + pct(c.irrB), 'C4: 2026-issue IRR tail risk')); }
       var dy = 2025 + c.deYr; if ((m.de26[dy] || 0) <= 0) f.push(lbl(5, 'DE_BY_YEAR', '2026-issue DE yr ' + c.deYr + ' (' + dy + ')=' + fmt(m.de26[dy] || 0, 2), 'C5: 2026-issue DE > 0 by yr ' + c.deYr));
       var cy = 2025 + c.cumDeYr; if ((m.cumDE26[cy] || 0) <= 0) f.push(lbl(6, 'CUMDE_BY_YEAR', '2026-issue CumDE yr ' + c.cumDeYr + ' (' + cy + ')=' + fmt(m.cumDE26[cy] || 0, 2), 'C6: 2026-issue CumDE > 0 by yr ' + c.cumDeYr));
-      var minCumDE26 = Math.min.apply(null, Object.values(m.cumDE26)); if (c.cumDEFloor != null && minCumDE26 < c.cumDEFloor) f.push(lbl('CF', 'CUMDE_FLOOR', 'min 2026-issue cumDE $' + fmt(minCumDE26, 1) + 'M < floor $' + fmt(c.cumDEFloor, 1) + 'M', 'CumDE floor ≥ $' + fmt(c.cumDEFloor, 1) + 'M'));
-      if (c.de1Floor != null && (m.de26[2026] || 0) < c.de1Floor) f.push(lbl('D1', 'DE1_FLOOR', '2026 (year-1) DE $' + fmt(m.de26[2026] || 0, 1) + 'M < floor $' + fmt(c.de1Floor, 1) + 'M', 'Year-1 DE floor ≥ $' + fmt(c.de1Floor, 1) + 'M'));
-      if (stochR && stochR.minRBCs && stochR.minRBCs.length && c.rbcTailX != null && c.rbcTailY != null) {   // trough-RBC tail (Slow mode only)
+      var minCumDE26 = Math.min.apply(null, Object.values(m.cumDE26)); if (c.cumDEFloor != null && minCumDE26 < c.cumDEFloor) f.push(lbl(7, 'CUMDE_FLOOR', 'min 2026-issue cumDE $' + fmt(minCumDE26, 1) + 'M < floor $' + fmt(c.cumDEFloor, 1) + 'M', 'C7: CumDE floor ≥ $' + fmt(c.cumDEFloor, 1) + 'M'));
+      if (c.de1Floor != null && (m.de26[2026] || 0) < c.de1Floor) f.push(lbl(8, 'DE1_FLOOR', '2026 (year-1) DE $' + fmt(m.de26[2026] || 0, 1) + 'M < floor $' + fmt(c.de1Floor, 1) + 'M', 'C8: Year-1 DE floor ≥ $' + fmt(c.de1Floor, 1) + 'M'));
+      if (stochR && stochR.minRBCs && stochR.minRBCs.length && c.rbcTailX != null && c.rbcTailY != null) {   // C9 trough-RBC tail (Slow mode only)
         var rb = stochR.minRBCs.filter(function (r) { return r != null && r < c.rbcTailX; }).length, rprob = rb / stochR.minRBCs.length;
-        if (rprob > c.rbcTailY) f.push(lbl('RT', 'RBC_TAIL', 'P(trough RBC<' + rx(c.rbcTailX) + ')=' + pct(rprob) + ' > ' + pct(c.rbcTailY), 'RBC tail: P(trough RBC < ' + rx(c.rbcTailX) + ') ≤ ' + pct(c.rbcTailY)));
+        if (rprob > c.rbcTailY) f.push(lbl(9, 'RBC_TAIL', 'P(trough RBC<' + rx(c.rbcTailX) + ')=' + pct(rprob) + ' > ' + pct(c.rbcTailY), 'C9: RBC tail — P(trough RBC < ' + rx(c.rbcTailX) + ') ≤ ' + pct(c.rbcTailY)));
       }
       return f;
     }

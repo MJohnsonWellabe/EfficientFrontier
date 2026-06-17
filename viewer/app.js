@@ -17,7 +17,11 @@ function fmt(x,d){if(x==null||!isFinite(x))return'—';return Number(x).toFixed(
 function pct(x,d){if(x==null||!isFinite(x))return'—';return(x*100).toFixed(d!=null?d:1)+'%';}
 function rx(x){if(x==null||!isFinite(x))return'—';return x.toFixed(3)+'×';}
 function sb(k,v,sub){return'<div class="stat-box"><span class="stat-lbl">'+k+'</span><span class="stat-val">'+v+'</span>'+(sub?'<span class="stat-sub">'+sub+'</span>':'')+'</div>';}
-function sleep(){return new Promise(function(r){setTimeout(r,0);});}
+// Yield to the event loop WITHOUT setTimeout's background-tab clamp (≥1s when hidden):
+// a MessageChannel macrotask is not throttled, so the run keeps progressing in an unfocused tab.
+var _yieldCh=(typeof MessageChannel!=='undefined')?new MessageChannel():null,_yieldQ=[];
+if(_yieldCh)_yieldCh.port1.onmessage=function(){var r=_yieldQ.shift();if(r)r();};
+function sleep(){return new Promise(function(r){if(_yieldCh){_yieldQ.push(r);_yieldCh.port2.postMessage(0);}else{setTimeout(r,0);}});}
 
 /* ---- data + shared compute wiring ----
    Workbook-derived inputs are fetched from data/ at runtime (no embedded blobs).
@@ -394,7 +398,7 @@ function readInputs(){
 }
 function updateConsSummary(){
   var c=S.cons,on=(document.getElementById('c_irr3on')||{}).checked;
-  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 2026 IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(2026 IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 2026 DE>0 yr '+(c.deYr||5)+'&nbsp; C6 2026 CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; CumDE floor (2026) $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M'+'&nbsp; RBC tail P(min RBC<'+rx(c.rbcTailX!=null?c.rbcTailX:3.5)+')≤'+pct(c.rbcTailY!=null?c.rbcTailY:.10)+(S.slowMode?'':' (Slow)');
+  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 2026 IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(2026 IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 2026 DE>0 yr '+(c.deYr||5)+'&nbsp; C6 2026 CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; C7 CumDE floor $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; C8 Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M'+'&nbsp; C9 RBC tail P(min RBC<'+rx(c.rbcTailX!=null?c.rbcTailX:3.5)+')≤'+pct(c.rbcTailY!=null?c.rbcTailY:.10)+(S.slowMode?'':' (Slow)');
 }
 
 /* ---- buildUI ---- */
@@ -670,11 +674,11 @@ function computeShadowPrices(){
   html+=relax('irrA',-0.01,'C4 — IRR floor lower',pct(S.cons.irrA),pct(S.cons.irrA-0.01));
   html+=relax('deYr',+1,'C5 — DE-positive year +1','yr '+S.cons.deYr,'yr '+(S.cons.deYr+1));
   html+=relax('cumDeYr',+1,'C6 — CumDE-positive year +1','yr '+S.cons.cumDeYr,'yr '+(S.cons.cumDeYr+1));
-  html+=relax('cumDEFloor',-20,'CumDE floor lower','$'+fmt(S.cons.cumDEFloor,0)+'M','$'+fmt(S.cons.cumDEFloor-20,0)+'M');
-  html+=relax('de1Floor',-30,'Year-1 DE floor lower','$'+fmt(S.cons.de1Floor,0)+'M','$'+fmt(S.cons.de1Floor-30,0)+'M');
+  html+=relax('cumDEFloor',-20,'C7 — CumDE floor lower','$'+fmt(S.cons.cumDEFloor,0)+'M','$'+fmt(S.cons.cumDEFloor-20,0)+'M');
+  html+=relax('de1Floor',-30,'C8 — Year-1 DE floor lower','$'+fmt(S.cons.de1Floor,0)+'M','$'+fmt(S.cons.de1Floor-30,0)+'M');
   if(S.results.some(function(r){return r.stochMinRBC&&r.stochMinRBC.length;})){   // RBC-tail rows only meaningful after a Slow run
-    html+=relax('rbcTailX',-0.25,'RBC tail — floor lower',rx(S.cons.rbcTailX),rx(S.cons.rbcTailX-0.25));
-    html+=relax('rbcTailY',+0.05,'RBC tail — tolerance looser',pct(S.cons.rbcTailY),pct(S.cons.rbcTailY+0.05));
+    html+=relax('rbcTailX',-0.25,'C9 — RBC tail floor lower',rx(S.cons.rbcTailX),rx(S.cons.rbcTailX-0.25));
+    html+=relax('rbcTailY',+0.05,'C9 — RBC tail tolerance looser',pct(S.cons.rbcTailY),pct(S.cons.rbcTailY+0.05));
   }
   html+='</tbody></table></div>';
   html+='<p class="hint" style="margin-top:8px">Highlighted rows unlock additional feasible return. "Δ vs base" is the change in the best feasible PVDE (the highest-return scenario that passes every constraint). Each row relaxes one constraint only; effects are not additive.</p>';
@@ -929,7 +933,7 @@ function renderEvidence(){
   var minCum=Math.min.apply(null,cumVals);
   var minCumYr=Object.keys(m.cumDE26).reduce(function(a,y){return m.cumDE26[y]<m.cumDE26[a]?y:a;},Object.keys(m.cumDE26)[0]);
   var cfpass=!(c.cumDEFloor!=null&&minCum<c.cumDEFloor);
-  html+=card('CumDE Floor','Maximum 2026-issue capital drawdown',cfpass,
+  html+=card('C7','CumDE floor — maximum 2026-issue capital drawdown',cfpass,
     row('Floor','≥ '+fmt(c.cumDEFloor,0)+' $M')+row('Deepest cumDE',fmt(minCum,1)+' $M in '+minCumYr,cfpass?'good':'bad'),
     'The most negative the 2026-issue cumulative DE reaches before turning cash-positive — the peak capital at risk on the 2026 cohort.');
 
@@ -939,7 +943,7 @@ function renderEvidence(){
   var d1tbl=yearTable(d1yrs,[
     {label:'2026-issue DE ($M)',vals:d1yrs.map(function(y){return m.de26[y]||0;}),fmt:function(v){return fmt(v,1);},bad:function(v,y){return y===2026&&c.de1Floor!=null&&v<c.de1Floor;}}
   ]);
-  html+=card('Yr-1 DE Floor','Year-1 (2026) distributable-earnings floor',d1pass,
+  html+=card('C8','Year-1 (2026) distributable-earnings floor',d1pass,
     row('Floor','≥ $'+fmt(c.de1Floor,0)+'M')+row('2026 (year-1) DE',fmt(de1V,1)+' $M',d1pass?'good':'bad')+row('Headroom vs floor',fmt(de1V-(c.de1Floor||0),1)+' $M',d1pass?'good':'bad'),
     'First-year (2026) distributable earnings on the 2026 issue cohort (all 3 products summed; pre-2026 in-force excluded). Caps how deep the first-year new-business acquisition strain can run — a capital-budget proxy on single-year aggressiveness. 2026 is highlighted if it breaches the floor.',d1tbl);
 
@@ -948,11 +952,11 @@ function renderEvidence(){
   if(rbcArr&&rbcArr.length){
     var rtBelow=rbcArr.filter(function(r){return r!=null&&r<c.rbcTailX;}).length, rtProb=rtBelow/rbcArr.length;
     rtPass=!(rtProb>c.rbcTailY);
-    html+=card('RBC Tail','Trough RBC ratio tail risk',rtPass,
+    html+=card('C9','Trough RBC ratio tail risk',rtPass,
       row('Threshold x','min RBC < '+rx(c.rbcTailX))+row('Max probability y','< '+pct(c.rbcTailY))+row('Observed P(min RBC<x)',pct(rtProb)+' ('+rtBelow+' / '+rbcArr.length+' runs)',rtPass?'good':'bad')+row('Worst-draw trough RBC',rx(Math.min.apply(null,rbcArr))),
       'Across the scenario’s stochastic draws, the share whose trough (minimum 2026–2030) RBC ratio falls below the floor. Full-book, note-adjusted — the stochastic counterpart to C1.');
   } else {
-    html+=card('RBC Tail','Trough RBC ratio tail risk',null,
+    html+=card('C9','Trough RBC ratio tail risk',null,
       row('Threshold x','min RBC < '+rx(c.rbcTailX))+row('Max probability y','< '+pct(c.rbcTailY)),
       'Run in <strong>Slow mode</strong> (Configuration tab) to evaluate this — it recomputes full RBC on every stochastic draw (~4–5 min at 100×100).');
   }
@@ -1083,10 +1087,11 @@ function renderDebug(){
       ['TAC_CHG','C2: Change in TAC / BOP TAC — annual (TAC−priorTAC)/priorTAC ≥ '+pct(S.cons.tacChgFloor)],
       ['IRR_TARGET','C3: 2026-issue IRR ≥ sales-weighted hurdle (MS '+pct(S.hurdles.MS)+', PN '+pct(S.hurdles.PN)+', HI '+pct(S.hurdles.HI)+'), 2026 weights'],
       ['IRR_TAIL','C4: 2026-issue IRR tail risk — P(IRR < '+pct(S.cons.irrA)+') ≤ '+pct(S.cons.irrB)+' across stochastic runs'],
-      ['RBC_TAIL','RBC tail — P(trough RBC < '+rx(S.cons.rbcTailX)+') ≤ '+pct(S.cons.rbcTailY)+' across stochastic runs (Slow mode)'],
       ['DE_BY_YEAR','C5: 2026-issue DE (all 3 products) positive by year '+S.cons.deYr+' (calendar year '+(2025+S.cons.deYr)+')'],
       ['CUMDE_BY_YEAR','C6: 2026-issue cumulative DE (all 3 products) positive by year '+S.cons.cumDeYr+' (calendar year '+(2025+S.cons.cumDeYr)+')'],
-      ['CUMDE_FLOOR','CumDE floor: min 2026-issue cumulative DE ≥ $'+fmt(S.cons.cumDEFloor,0)+'M']
+      ['CUMDE_FLOOR','C7: CumDE floor — min 2026-issue cumulative DE ≥ $'+fmt(S.cons.cumDEFloor,0)+'M'],
+      ['DE1_FLOOR','C8: Year-1 DE floor — 2026 (first-year) DE ≥ $'+fmt(S.cons.de1Floor,0)+'M'],
+      ['RBC_TAIL','C9: Trough-RBC tail — P(trough RBC < '+rx(S.cons.rbcTailX)+') ≤ '+pct(S.cons.rbcTailY)+' across stochastic runs (Slow mode)']
     ];
     var failMap={};(scen.failures||[]).forEach(function(f){failMap[f.code]=f;});
     var h='<table><thead><tr><th style="min-width:400px">Constraint</th><th>Result</th><th>Detail</th></tr></thead><tbody>';
