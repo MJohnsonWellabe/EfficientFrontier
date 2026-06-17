@@ -83,7 +83,7 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
   - C6 — 2026-issue cumulative DE > 0 by **yr 10** (2035)
   - C7 — CumDE floor ≥ **−$180M**
   - C8 — Year-1 DE floor ≥ **−$150M**
-  - C9 — Trough-RBC tail (**Slow mode only**): P(min RBC 2026–2030 < **350%**) ≤ **10%** across stochastic draws — the stochastic counterpart to C1, full-book/note-adjusted.
+  - C9 — Trough-RBC tail (**Slow mode only**): P(min RBC 2026–2030 < **350%**) ≤ **25%** across stochastic draws — the stochastic counterpart to C1, full-book/note-adjusted.
 - **Run mode:** **Fast** (default) skips the trough-RBC tail (per-draw 2026-issue metrics only, ~1 min); **Slow** runs a full RBC recompute per stochastic draw to evaluate the trough-RBC tail (~4–5 min at 100×100).
 - **Surplus note:** default **ON**, **$150M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
   Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the

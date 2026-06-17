@@ -5,7 +5,7 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,
-  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.10},
+  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.25},
   surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
@@ -114,9 +114,9 @@ function _UNUSED_downloadEVTemplate_OLD(){
 
 function downloadScenCSV(){
   if(!S.results.length){alert('Run the frontier first.');return;}
-  var h=['ID','MS','PN','HI','PVDE','DownsideCTE90','WorstDD','RiskSD','SemiDev','IRR','MinRBC','WtdTargetIRR','Feasible','Frontier','Failures'];
+  var h=['ID','MS','PN','HI','PVDE','DownsideCTE90','WorstDD','RiskSD','SemiDev','IRR','MinRBC','PctTroughRBCbelow','WtdTargetIRR','Feasible','Frontier','Failures'];
   var rows=[h.join(',')];
-  S.results.forEach(function(r){rows.push([r.id,fmt(r.sales.MS,1),fmt(r.sales.PN,1),fmt(r.sales.HI,1),fmt(r.portNPV,2),fmt(r.risk,2),fmt(r.ddWorst,2),fmt(r.riskSD,2),fmt(r.semidev,2),pct(r.portIRR,3),rx(r.minRBC),pct(r.wtdIRR,3),r.feasible?1:0,r.isFrontier?1:0,r.failures.map(function(f){return f.code;}).join(';')].join(','));});
+  S.results.forEach(function(r){var rp=(r.stochMinRBC&&r.stochMinRBC.length)?pct(r.stochMinRBC.filter(function(x){return x<S.cons.rbcTailX;}).length/r.stochMinRBC.length,1):'';rows.push([r.id,fmt(r.sales.MS,1),fmt(r.sales.PN,1),fmt(r.sales.HI,1),fmt(r.portNPV,2),fmt(r.risk,2),fmt(r.ddWorst,2),fmt(r.riskSD,2),fmt(r.semidev,2),pct(r.portIRR,3),rx(r.minRBC),rp,pct(r.wtdIRR,3),r.feasible?1:0,r.isFrontier?1:0,r.failures.map(function(f){return f.code;}).join(';')].join(','));});
   _dlCSV(rows.join('\n'),'frontier_results.csv');
 }
 
@@ -619,14 +619,15 @@ function renderScenTable(){
   // Sort by ID number (deterministic run order); custom scenarios (string id 'C..') go last
   rows.sort(function(a,b){var ac=String(a.id).charAt(0)==='C',bc=String(b.id).charAt(0)==='C';if(ac&&!bc)return 1;if(bc&&!ac)return -1;return (parseInt(a.id,10)||0)-(parseInt(b.id,10)||0);});
   document.getElementById('tbl-caption').textContent=rows.length+' scenario'+(rows.length!==1?'s':'');
-  var h='<table class="scen-tbl"><thead><tr><th class="lc">ID</th><th>Status</th><th>MS $M</th><th>PN $M</th><th>HI $M</th><th>PVDE $M</th><th>Downside vs plan</th><th>Worst DD</th><th>IRR</th><th>Wtd Target IRR</th><th>Min RBC</th><th>P10 IRR</th><th>Failures</th></tr></thead><tbody>';
+  var h='<table class="scen-tbl"><thead><tr><th class="lc">ID</th><th>Status</th><th>MS $M</th><th>PN $M</th><th>HI $M</th><th>PVDE $M</th><th>Downside vs plan</th><th>Worst DD</th><th>IRR</th><th>Wtd Target IRR</th><th>Min RBC</th><th title="Observed share of stochastic draws with trough RBC below the C9 threshold (Slow mode only)">P(RBC&lt;'+rx(S.cons.rbcTailX)+')</th><th>P10 IRR</th><th>Failures</th></tr></thead><tbody>';
   rows.forEach(function(r){
     var st=r.isCustom?'<span class="chip" style="background:#C4881A;color:#fff">★ custom</span> '+(r.feasible?'<span class="chip ok">feasible</span>':'<span class="chip bad">infeasible</span>'):(r.isFrontier?'<span class="chip fr">frontier</span>':r.feasible?'<span class="chip ok">feasible</span>':'<span class="chip bad">infeasible</span>');
     if(r.robust&&r.isFrontier)st+=' <span class="chip" style="background:#0B7A8C;color:#fff">robust</span>';
     var p10=r.stochIRRs&&r.stochIRRs.length?pctile(r.stochIRRs,10):null;
+    var rbcProb=(r.stochMinRBC&&r.stochMinRBC.length)?(r.stochMinRBC.filter(function(x){return x<S.cons.rbcTailX;}).length/r.stochMinRBC.length):null;
     var fails=r.failures.map(function(f){return'<span class="chip bad" style="font-size:10px">'+f.code+'</span>';}).join(' ');
     var rowStyle=r.isCustom?' style="background:#fdf6e8"':(r.isFrontier?' class="fr-row"':'');
-    h+='<tr'+rowStyle+'><td style="font-family:var(--mono)'+(r.isCustom?';font-weight:700;color:#8a5e10':'')+'">'+r.id+'</td><td>'+st+'</td><td>'+fmt(r.sales.MS,0)+'</td><td>'+fmt(r.sales.PN,0)+'</td><td>'+fmt(r.sales.HI,1)+'</td><td>'+fmt(r.portNPV,1)+'</td><td>'+fmt(r.risk,1)+'</td><td>'+fmt(r.ddWorst,1)+'</td><td>'+pct(r.portIRR,2)+'</td><td>'+pct(r.wtdIRR,2)+'</td><td>'+rx(r.minRBC)+'</td><td>'+pct(p10,2)+'</td><td style="text-align:left">'+fails+'</td></tr>';
+    h+='<tr'+rowStyle+'><td style="font-family:var(--mono)'+(r.isCustom?';font-weight:700;color:#8a5e10':'')+'">'+r.id+'</td><td>'+st+'</td><td>'+fmt(r.sales.MS,0)+'</td><td>'+fmt(r.sales.PN,0)+'</td><td>'+fmt(r.sales.HI,1)+'</td><td>'+fmt(r.portNPV,1)+'</td><td>'+fmt(r.risk,1)+'</td><td>'+fmt(r.ddWorst,1)+'</td><td>'+pct(r.portIRR,2)+'</td><td>'+pct(r.wtdIRR,2)+'</td><td>'+rx(r.minRBC)+'</td><td'+(rbcProb!=null&&rbcProb>S.cons.rbcTailY?' style="color:var(--red);font-weight:700"':'')+'>'+(rbcProb!=null?pct(rbcProb,1):'—')+'</td><td>'+pct(p10,2)+'</td><td style="text-align:left">'+fails+'</td></tr>';
   });
   document.getElementById('scen-tbl-wrap').innerHTML=h+'</tbody></table>';
 }
