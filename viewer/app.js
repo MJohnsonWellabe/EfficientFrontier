@@ -4,9 +4,9 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   origSales:{MS:{2026:212.92,2027:200,2028:200,2029:200,2030:200},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
-  nScen:100,nStoch:100,seed:null,lastRunSeed:null,
-  cons:{rbcFloor:3.5,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150},
-  surplusNote:{on:true,amount:100,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
+  nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,
+  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.10},
+  surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
   results:[],years:[],vnbProd:'MS',vnbBasis:'orig',rbcBasis:'orig'};
@@ -30,6 +30,8 @@ S.seed=F.STOCH_SEED;   // default RNG seed (overridable via the Config seed inpu
 // salesTable (used verbatim, no growth); frontier scenarios only have a 2026 anchor
 // (scalar) which mkScalars grows by the schedule. Use this everywhere a scenario is re-run.
 function scenSales(scen){return (scen&&scen.salesTable)||(scen&&scen.sales);}
+// drawdown (most-negative cumulative 2026-issue DE) from a buildScen cumDE26 map — matches stochMetrics' dd
+function ddFromCum(cum){var d=0;for(var y=2026;y<=2055;y++){var v=cum[y];if(v!=null&&v<d)d=v;}return d;}
 var lhs=F.lhs,buildShockBank=F.buildShockBank,shockFromBank=F.shockFromBank,
     pctile=F.pctile,stddev=F.stddev,cteLow=F.cteLow,semidevBelow=F.semidevBelow,
     downsideRisk=F.downsideRisk,cteShortfall=F.cteShortfall,cteShortfallScaled=F.cteShortfallScaled,
@@ -44,7 +46,7 @@ function computeBaseline(){F.computeBaseline();renderCumDEBaseline();}
    Per-product annual growth for 2027..2035, compounded off the 2026 anchor. Applied ONLY
    to the sampled efficient-frontier draws (see frontier.js mkScalars), never the baseline.
    Defaults: MS 0% every year; PN 10% (2027-2029) then 6% (2030-2035); HI 5% every year. */
-function defaultGrowth(){var g={MS:{},PN:{},HI:{}};SALES_YEARS.forEach(function(y){if(y===2026)return;g.MS[y]=0.0;g.PN[y]=0.10;g.HI[y]=0.05;});return g;}
+function defaultGrowth(){var g={MS:{},PN:{},HI:{}};SALES_YEARS.forEach(function(y){if(y===2026)return;g.MS[y]=(y===2027)?-0.12:(y===2028||y===2029)?0.0:(y===2030||y===2031)?0.10:0.05;g.PN[y]=0.10;g.HI[y]=0.05;});return g;}
 S.growth=defaultGrowth();
 function refreshGrowthUI(){
   var gy=SALES_YEARS.filter(function(y){return y>=2027;});
@@ -247,16 +249,17 @@ async function runFrontier(){
     var sales={MS:msA[i],PN:pnA[i],HI:hiA[i]};
     var mc={MS:1,PN:1,HI:1},ml={MS:1,PN:1,HI:1};
     var det=buildScen(sales,mc,ml);
-    var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
+    var sIRRs=[],sNPVs=[],sDD=[],sMinRBC=[],stochScalarsList=[];
     for(var k=0;k<ns;k++){
       var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;   // CRN: same bank for every scenario
       stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm),nier:Object.assign({},nm),nierProc:Object.assign({},_s.nmProc)});
-      var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
+      if(S.slowMode){var sm=buildScen(sales,cm,lm,{combined:_s.nm,proc:_s.nmProc});sIRRs.push(sm.irr26);sNPVs.push(sm.npv26);sDD.push(ddFromCum(sm.cumDE26));sMinRBC.push(sm.minRBC);}
+      else{var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);}
       if(performance.now()-_yt>40){fill.style.width=Math.round((i*ns+k+1)/(n*ns)*100)+'%';await sleep();_yt=performance.now();}
     }
     var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;   // Step 3: CTE-90 downside shortfall ($M)
-    var fails=evalCons(det,{irrs:sIRRs});
-    S.results.push({id:i+1,sales:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false});
+    var fails=evalCons(det,S.slowMode?{irrs:sIRRs,minRBCs:sMinRBC}:{irrs:sIRRs});
+    S.results.push({id:i+1,sales:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochMinRBC:S.slowMode?sMinRBC:null,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false});
     var _r=S.results[S.results.length-1];_r.riskSD=dr.sd;_r.cte90=dr.cte90;_r.semidev=dr.semidev;_r.ddMed=dr.ddMed;_r.ddWorst=dr.ddWorst;_r.stochDD=sDD;
     fill.style.width=Math.round((i+1)/n*100)+'%';st.textContent=(i+1)+'/'+n+' scenarios…';await sleep();
   }
@@ -283,18 +286,19 @@ async function testCustomScenario(){
   F.setSeed(S.lastRunSeed!=null?S.lastRunSeed:S.seed);var BANK=buildShockBank(ns);   // same bank as the last frontier run (CRN consistency)
   var mc={MS:1,PN:1,HI:1},ml={MS:1,PN:1,HI:1};
   var det=buildScen(sales,mc,ml);
-  var sIRRs=[],sNPVs=[],sDD=[],stochScalarsList=[];
+  var sIRRs=[],sNPVs=[],sDD=[],sMinRBC=[],stochScalarsList=[];
   for(var k=0;k<ns;k++){
     var _s=shockFromBank(BANK[k]);var cm=_s.cm,lm=_s.lm,nm=_s.nm;
     stochScalarsList.push({claims:Object.assign({},cm),lapse:Object.assign({},lm),nier:Object.assign({},nm),nierProc:Object.assign({},_s.nmProc)});
-    var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);
+    if(S.slowMode){var sm=buildScen(sales,cm,lm,{combined:_s.nm,proc:_s.nmProc});sIRRs.push(sm.irr26);sNPVs.push(sm.npv26);sDD.push(ddFromCum(sm.cumDE26));sMinRBC.push(sm.minRBC);}
+    else{var sm=stochMetrics(sales,cm,lm,nm);sIRRs.push(sm.irr);sNPVs.push(sm.npv);sDD.push(sm.dd);}
   }
   var dr=downsideRisk(sNPVs,sDD,det.npv26),risk=dr.risk;
-  var fails=evalCons(det,{irrs:sIRRs});
+  var fails=evalCons(det,S.slowMode?{irrs:sIRRs,minRBCs:sMinRBC}:{irrs:sIRRs});
   // Remove any prior custom scenario, then add this one with a distinctive id
   S.results=S.results.filter(function(r){return !r.isCustom;});
   var cid='C'+(S.results.length+1);
-  var rec={id:cid,sales:sales26,salesTable:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
+  var rec={id:cid,sales:sales26,salesTable:sales,portIRR:det.irr26,portNPV:det.npv26,wtdIRR:det.wtdIRR,risk:risk,portIRRAll:det.portIRR,portNPVAll:det.portNPV,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochMinRBC:S.slowMode?sMinRBC:null,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
   rec.riskSD=dr.sd;rec.cte90=dr.cte90;rec.semidev=dr.semidev;rec.ddMed=dr.ddMed;rec.ddWorst=dr.ddWorst;rec.stochDD=sDD;
   S.results.push(rec);
   markFrontier(S.results);populateSelectors();
@@ -374,7 +378,8 @@ function readInputs(){
   S.hurdles={MS:g('h_MS')/100,PN:g('h_PN')/100,HI:g('h_HI')/100};
   S.nScen=Math.max(8,Math.round(g('nScen')));S.nStoch=Math.max(50,Math.round(g('nStoch')));   // floor 50: keeps the C4 IRR-tail estimate stable
   var _seed=Math.round(g('seedInput'));S.seed=(isFinite(_seed)&&_seed!==0)?_seed:F.STOCH_SEED;   // RNG seed: same seed -> identical frontier
-  S.cons={rbcFloor:g('c_rbc'),tacChgFloor:g('c_tacchg')/100,irr3on:(document.getElementById('c_irr3on')||{}).checked,irrA:g('c_irra')/100,irrB:g('c_irrb')/100,deYr:Math.round(g('c_deyr')),cumDeYr:Math.round(g('c_cumdeyr')),cumDEFloor:g('c_cumfloor'),de1Floor:g('c_de1floor')};
+  S.cons={rbcFloor:g('c_rbc'),tacChgFloor:g('c_tacchg')/100,irr3on:(document.getElementById('c_irr3on')||{}).checked,irrA:g('c_irra')/100,irrB:g('c_irrb')/100,deYr:Math.round(g('c_deyr')),cumDeYr:Math.round(g('c_cumdeyr')),cumDEFloor:g('c_cumfloor'),de1Floor:g('c_de1floor'),rbcTailX:g('c_rbctailx')/100,rbcTailY:g('c_rbctaily')/100};
+  S.slowMode=(document.getElementById('runModeSlow')||{}).checked||false;   // Slow mode adds the per-draw trough-RBC tail constraint
   readSurplusNote();
   PRODS.forEach(function(c){S.claimsSD[c]=+(document.getElementById('cs_'+c)||{value:4}).value/100||0;S.claimsProcSD[c]=+(document.getElementById('cs_proc_'+c)||{value:3}).value/100||0;S.lapseSD[c]=+(document.getElementById('ls_'+c)||{value:6.5}).value/100||0;S.lapseProcSD[c]=+(document.getElementById('ls_proc_'+c)||{value:3}).value/100||0;S.procCorr[c]=Math.max(0,Math.min(0.95,+(document.getElementById('rho_'+c)||{value:0}).value||0));});
   // Preneed-only NIER (investment-yield) shock σ, entered in basis points -> rate units. PN claims σ above IS the mortality σ (drives the coupled claims+decrement shock); PN lapse σ / ρ are unused.
@@ -389,7 +394,7 @@ function readInputs(){
 }
 function updateConsSummary(){
   var c=S.cons,on=(document.getElementById('c_irr3on')||{}).checked;
-  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 2026 IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(2026 IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 2026 DE>0 yr '+(c.deYr||5)+'&nbsp; C6 2026 CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; CumDE floor (2026) $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M';
+  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 2026 IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(2026 IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 2026 DE>0 yr '+(c.deYr||5)+'&nbsp; C6 2026 CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; CumDE floor (2026) $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M'+'&nbsp; RBC tail P(min RBC<'+rx(c.rbcTailX!=null?c.rbcTailX:3.5)+')≤'+pct(c.rbcTailY!=null?c.rbcTailY:.10)+(S.slowMode?'':' (Slow)');
 }
 
 /* ---- buildUI ---- */
@@ -631,7 +636,7 @@ function evalFeasUnder(cons){
   var nFeas=0,best=null;
   S.results.forEach(function(r){
     if(r.isCustom)return;
-    var fails=evalCons(r,{irrs:r.stochIRRs});
+    var fails=evalCons(r,{irrs:r.stochIRRs,minRBCs:r.stochMinRBC});
     if(fails.length===0){nFeas++;if(isFinite(r.portNPV)&&(best===null||r.portNPV>best))best=r.portNPV;}
   });
   S.cons=save;
@@ -667,6 +672,10 @@ function computeShadowPrices(){
   html+=relax('cumDeYr',+1,'C6 — CumDE-positive year +1','yr '+S.cons.cumDeYr,'yr '+(S.cons.cumDeYr+1));
   html+=relax('cumDEFloor',-20,'CumDE floor lower','$'+fmt(S.cons.cumDEFloor,0)+'M','$'+fmt(S.cons.cumDEFloor-20,0)+'M');
   html+=relax('de1Floor',-30,'Year-1 DE floor lower','$'+fmt(S.cons.de1Floor,0)+'M','$'+fmt(S.cons.de1Floor-30,0)+'M');
+  if(S.results.some(function(r){return r.stochMinRBC&&r.stochMinRBC.length;})){   // RBC-tail rows only meaningful after a Slow run
+    html+=relax('rbcTailX',-0.25,'RBC tail — floor lower',rx(S.cons.rbcTailX),rx(S.cons.rbcTailX-0.25));
+    html+=relax('rbcTailY',+0.05,'RBC tail — tolerance looser',pct(S.cons.rbcTailY),pct(S.cons.rbcTailY+0.05));
+  }
   html+='</tbody></table></div>';
   html+='<p class="hint" style="margin-top:8px">Highlighted rows unlock additional feasible return. "Δ vs base" is the change in the best feasible PVDE (the highest-return scenario that passes every constraint). Each row relaxes one constraint only; effects are not additive.</p>';
   el.innerHTML=html;
@@ -833,7 +842,7 @@ function renderEvidence(){
   var stochIRRs=scen.stochIRRs||[];
   var c=S.cons;
   function card(num,title,pass,rows,note,extra){
-    var badge=pass?'<span style="background:#e6f5ea;color:#1c7a3d;font-weight:700;padding:2px 10px;border-radius:20px;font-size:12px">✓ PASS</span>':'<span style="background:#fdeaea;color:#b3261e;font-weight:700;padding:2px 10px;border-radius:20px;font-size:12px">✗ FAIL</span>';
+    var badge=pass===null?'<span style="background:#eef1f4;color:#6b7a91;font-weight:700;padding:2px 10px;border-radius:20px;font-size:12px">— not run</span>':pass?'<span style="background:#e6f5ea;color:#1c7a3d;font-weight:700;padding:2px 10px;border-radius:20px;font-size:12px">✓ PASS</span>':'<span style="background:#fdeaea;color:#b3261e;font-weight:700;padding:2px 10px;border-radius:20px;font-size:12px">✗ FAIL</span>';
     var h='<div class="card" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="font-size:14px;font-weight:650;margin:0">'+num+' — '+title+'</h3>'+badge+'</div>';
     h+='<table style="font-size:12px;border-collapse:collapse">'+rows+'</table>';
     if(extra)h+=extra;
@@ -934,8 +943,22 @@ function renderEvidence(){
     row('Floor','≥ $'+fmt(c.de1Floor,0)+'M')+row('2026 (year-1) DE',fmt(de1V,1)+' $M',d1pass?'good':'bad')+row('Headroom vs floor',fmt(de1V-(c.de1Floor||0),1)+' $M',d1pass?'good':'bad'),
     'First-year (2026) distributable earnings on the 2026 issue cohort (all 3 products summed; pre-2026 in-force excluded). Caps how deep the first-year new-business acquisition strain can run — a capital-budget proxy on single-year aggressiveness. 2026 is highlighted if it breaches the floor.',d1tbl);
 
+  // RBC tail — trough RBC ratio across stochastic draws (Slow mode only)
+  var rbcArr=scen.stochMinRBC, rtPass=true;
+  if(rbcArr&&rbcArr.length){
+    var rtBelow=rbcArr.filter(function(r){return r!=null&&r<c.rbcTailX;}).length, rtProb=rtBelow/rbcArr.length;
+    rtPass=!(rtProb>c.rbcTailY);
+    html+=card('RBC Tail','Trough RBC ratio tail risk',rtPass,
+      row('Threshold x','min RBC < '+rx(c.rbcTailX))+row('Max probability y','< '+pct(c.rbcTailY))+row('Observed P(min RBC<x)',pct(rtProb)+' ('+rtBelow+' / '+rbcArr.length+' runs)',rtPass?'good':'bad')+row('Worst-draw trough RBC',rx(Math.min.apply(null,rbcArr))),
+      'Across the scenario’s stochastic draws, the share whose trough (minimum 2026–2030) RBC ratio falls below the floor. Full-book, note-adjusted — the stochastic counterpart to C1.');
+  } else {
+    html+=card('RBC Tail','Trough RBC ratio tail risk',null,
+      row('Threshold x','min RBC < '+rx(c.rbcTailX))+row('Max probability y','< '+pct(c.rbcTailY)),
+      'Run in <strong>Slow mode</strong> (Configuration tab) to evaluate this — it recomputes full RBC on every stochastic draw (~4–5 min at 100×100).');
+  }
+
   // Summary banner
-  var allPass=[c1pass,c2pass,c3pass,c4pass,c5pass,c6pass,cfpass,d1pass];
+  var allPass=[c1pass,c2pass,c3pass,c4pass,c5pass,c6pass,cfpass,d1pass,rtPass];
   var nFail=allPass.filter(function(x){return !x;}).length;
   var banner='<div style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:650;'+(nFail===0?'background:#e6f5ea;color:#1c7a3d':'background:#fdeaea;color:#b3261e')+'">'+(nFail===0?'✓ Scenario #'+scen.id+' is FEASIBLE — all constraints satisfied':'✗ Scenario #'+scen.id+' is INFEASIBLE — '+nFail+' constraint'+(nFail>1?'s':'')+' failed')+'</div>';
 
@@ -1060,6 +1083,7 @@ function renderDebug(){
       ['TAC_CHG','C2: Change in TAC / BOP TAC — annual (TAC−priorTAC)/priorTAC ≥ '+pct(S.cons.tacChgFloor)],
       ['IRR_TARGET','C3: 2026-issue IRR ≥ sales-weighted hurdle (MS '+pct(S.hurdles.MS)+', PN '+pct(S.hurdles.PN)+', HI '+pct(S.hurdles.HI)+'), 2026 weights'],
       ['IRR_TAIL','C4: 2026-issue IRR tail risk — P(IRR < '+pct(S.cons.irrA)+') ≤ '+pct(S.cons.irrB)+' across stochastic runs'],
+      ['RBC_TAIL','RBC tail — P(trough RBC < '+rx(S.cons.rbcTailX)+') ≤ '+pct(S.cons.rbcTailY)+' across stochastic runs (Slow mode)'],
       ['DE_BY_YEAR','C5: 2026-issue DE (all 3 products) positive by year '+S.cons.deYr+' (calendar year '+(2025+S.cons.deYr)+')'],
       ['CUMDE_BY_YEAR','C6: 2026-issue cumulative DE (all 3 products) positive by year '+S.cons.cumDeYr+' (calendar year '+(2025+S.cons.cumDeYr)+')'],
       ['CUMDE_FLOOR','CumDE floor: min 2026-issue cumulative DE ≥ $'+fmt(S.cons.cumDEFloor,0)+'M']

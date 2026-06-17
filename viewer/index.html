@@ -235,7 +235,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 <div class="card">
   <h2 class="sh">4 — Constraints</h2>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
-    <label class="f"><span class="lb">Constraint 1 — Min RBC ratio (2026–2030)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_rbc" value="3.5" step="0.1"><span>×</span></div><p class="hint" style="margin-top:4px">Required capital = post-covariance × 1.03. Reject if min RBC over 2026–2030 falls below this.</p></label>
+    <label class="f"><span class="lb">Constraint 1 — Min RBC ratio (2026–2030)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_rbc" value="4.0" step="0.1"><span>×</span></div><p class="hint" style="margin-top:4px">Required capital = post-covariance × 1.03. Reject if min RBC over 2026–2030 falls below this.</p></label>
     <label class="f"><span class="lb">Constraint 2 — Min change in TAC / BOP TAC</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_tacchg" value="-12" step="0.5"><span>%</span></div><p class="hint" style="margin-top:4px">Year-over-year change in Total Adjusted Capital divided by beginning-of-period TAC. Reject if this falls below the floor in any year. (Replaces the former ATI/C&amp;S test and absorbs the old C7 TAC-decline limit.)</p></label>
     <label class="f" style="background:#f5f8fa;border:1px solid var(--line);border-radius:7px;padding:12px"><span class="lb">Constraint 3 — 2026-issue IRR vs sales-weighted target</span><div style="margin:6px 0"><label><input type="checkbox" id="c_irr3on" checked>Enforce</label></div><p class="hint">Reject if the <strong>2026 issue-year</strong> IRR &lt; sales-weighted average of product hurdle rates (weighted by the 2026 sales mix). Pre-2026 in-force is excluded.</p></label>
     <div class="c4box">
@@ -256,6 +256,13 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
       <div id="cumDE-baseline-tbl" style="display:none;margin-top:8px;overflow:auto"><div id="cumDEBslTbl"></div></div></div>
     </div>
   </div>
+  <div class="c4box" style="margin-top:12px">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px"><strong>Trough RBC tail risk (stochastic counterpart to C1):</strong> the probability that a scenario's <strong>trough RBC ratio</strong> (minimum over 2026–2030, full book, note-adjusted) falls below <em>x</em>% must be less than <em>y</em>%, measured across the stochastic draws. <strong>Evaluated only in Slow mode</strong> (it recomputes full RBC on every draw).</p>
+    <div class="g4">
+      <label class="f" style="margin:0"><span class="lb"><em>x</em> — min RBC ratio</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_rbctailx" value="350" step="10"><span>%</span></div></label>
+      <label class="f" style="margin:0"><span class="lb"><em>y</em> — max probability</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_rbctaily" value="10" step="1"><span>%</span></div></label>
+    </div>
+  </div>
   <div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:6px;font-size:12px;color:var(--muted)" id="consSummary"></div>
 </div>
 
@@ -268,7 +275,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   </div>
   <p class="hint" style="margin-bottom:14px">A surplus note brings in capital at issue and earns investment income on the proceeds, then pays an upfront fee, quarterly interest (one quarter of the annual coupon every three months after issue), and repays principal at maturity. The <strong>net cash flow each year flows through TAC</strong> as an income change — increasing or decreasing total adjusted capital — and touches nothing else in the model.</p>
   <div id="sn_fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
-    <label class="f" style="margin:0"><span class="lb">Amount ($M)</span><input type="number" id="sn_amount" value="100" step="5"></label>
+    <label class="f" style="margin:0"><span class="lb">Amount ($M)</span><input type="number" id="sn_amount" value="150" step="5"></label>
     <label class="f" style="margin:0"><span class="lb">Tenor (years)</span><input type="number" id="sn_tenor" value="10" step="1" min="1"></label>
     <label class="f" style="margin:0"><span class="lb">Interest rate (%)</span><input type="number" id="sn_rate" value="9" step="0.25"></label>
     <label class="f" style="margin:0"><span class="lb">Upfront fee (%)</span><input type="number" id="sn_fees" value="3" step="0.25"></label>
@@ -282,6 +289,11 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   </div>
 </div>
 
+<div style="margin-bottom:10px;padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:7px">
+  <span class="lb" style="margin-right:12px">Run mode</span>
+  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~1 min)</label>
+  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~4–5 min at 100×100)</label>
+</div>
 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
   <button class="btn" id="runBtn" style="min-width:200px;font-size:14px;padding:12px 28px">▶ Run Frontier</button>
   <span style="font-size:12px;color:var(--muted)" id="runStatus"></span>
@@ -433,7 +445,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="evSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
       </div>
     </div>
-    <p class="hint" style="margin-bottom:12px">Evidence for each constraint individually, evaluated for the selected scenario. C3–C6, the CumDE floor, and the Year-1 DE floor use 2026 issues only; C1 and C2 use the full projected capital position.</p>
+    <p class="hint" style="margin-bottom:12px">Evidence for each constraint individually, evaluated for the selected scenario. C3–C6, the CumDE floor, and the Year-1 DE floor use 2026 issues only; C1, C2, and the trough-RBC tail use the full projected capital position. The trough-RBC tail card is populated only after a <strong>Slow</strong>-mode run.</p>
     <div id="evidenceBody"></div>
   </div>
 </section>
@@ -509,6 +521,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 <li class="doc-li"><strong>C2 — Change in TAC / BOP TAC (default −12%):</strong> the year-over-year change in Total Adjusted Capital divided by beginning-of-period TAC, <code style="font-family:var(--mono);font-size:11.5px">(TAC[y] − TAC[y−1]) / TAC[y−1]</code>, must be ≥ the floor in every year. It is applied in every year — the worst single-year TAC change must clear the floor.</li>
 <li class="doc-li"><strong>C3 — 2026-issue IRR vs target (enforced):</strong> the IRR of the 2026 issue-year DE stream must be ≥ the sales-weighted average of the product hurdle rates, weighted by the scenario's 2026 sales mix.</li>
 <li class="doc-li"><strong>C4 — 2026-issue IRR tail risk (a = 8%, b = 15%):</strong> across the stochastic claim/termination draws, P(2026-issue IRR &lt; a) must be &lt; b. This is the most volatility-sensitive constraint and requires a sufficient draw count (minimum 50, default 100) for a stable tail estimate.</li>
+<li class="doc-li"><strong>Trough RBC tail (x = 350%, y = 10%) — Slow mode only:</strong> across the stochastic draws, the probability that a scenario's <em>trough</em> RBC ratio (minimum over 2026–2030, full book, note-adjusted) falls below <em>x</em> must be ≤ <em>y</em>. The stochastic counterpart to C1: where C1 caps the deterministic trough, this caps how often capital adequacy breaches under shocks. It requires a full RBC recompute on every draw, so it is evaluated only when the run is set to <strong>Slow</strong> mode (~4–5 min at 100×100); Fast runs skip it.</li>
 <li class="doc-li"><strong>C5 — 2026-issue DE positive by year (default yr 4 = 2029):</strong> the 2026 issue-year distributable earnings, summed across all three products, must be positive by the chosen projection year.</li>
 <li class="doc-li"><strong>C6 — 2026-issue cumulative DE positive by year (default yr 10 = 2035):</strong> cumulative 2026-issue DE (all three products) must turn positive by the chosen year.</li>
 <li class="doc-li"><strong>CumDE floor (default −$180M):</strong> the minimum cumulative 2026-issue DE (all three products) must not fall below the floor in any year — the deepest capital drawdown the 2026 cohort reaches before turning cash-positive.</li>

@@ -17,7 +17,7 @@ function defaultGrowth() {
   for (var i = 0; i < SALES_YEARS.length; i++) {
     var y = SALES_YEARS[i];
     if (y === 2026) continue;                       // 2026 is the anchor, never grown
-    g.MS[y] = 0.0;
+    g.MS[y] = (y === 2027) ? -0.12 : (y === 2028 || y === 2029) ? 0.0 : (y === 2030 || y === 2031) ? 0.10 : 0.05;
     g.PN[y] = 0.10;
     g.HI[y] = 0.05;
   }
@@ -66,9 +66,9 @@ function buildState(EFENG, dataDir, growth) {
     // (drives the coupled claims+decrement+reserve-release shock); PN lapseSD/procCorr are unused.
     nierSD: { MS: 0, PN: 0.0035, HI: 0 },
     nierProcSD: { MS: 0, PN: 0.0015, HI: 0 },
-    nScen: 100, nStoch: 100,
-    cons: { rbcFloor: 3.5, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150 },
-    surplusNote: { on: true, amount: 100, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
+    nScen: 100, nStoch: 100, slowMode: false,
+    cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150, rbcTailX: 3.5, rbcTailY: 0.10 },
+    surplusNote: { on: true, amount: 150, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
     results: []
   };
 }

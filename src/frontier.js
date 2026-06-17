@@ -230,7 +230,7 @@
       var deStream = []; for (var y = 2026; y <= 2055; y++)deStream.push(de[y]);
       var portIRR = EFENG.irr(deStream), portNPV = EFENG.npv(P.disc, deStream);
 
-      var rec26 = {}; PRODS.forEach(function (c) { rec26[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iy: '2026' }); });
+      var rec26 = {}; PRODS.forEach(function (c) { rec26[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iy: '2026', nierShift: (nComb && nComb[c]) || null }); });   // 2026-issue with the same NIER shock as recNB (null for deterministic)
       var de26 = {}, cumDE26 = {}, cum26 = 0; for (var y = 2026; y <= 2055; y++) { de26[y] = PRODS.reduce(function (s, c) { return s + (rec26[c].annual.DE[y] || 0); }, 0); cum26 += de26[y]; cumDE26[y] = cum26; }
       var deStream26 = []; for (var y = 2026; y <= 2055; y++)deStream26.push(de26[y]);
       var irr26 = EFENG.irr(deStream26), npv26 = EFENG.npv(P.disc, deStream26);
@@ -272,6 +272,10 @@
       var cy = 2025 + c.cumDeYr; if ((m.cumDE26[cy] || 0) <= 0) f.push(lbl(6, 'CUMDE_BY_YEAR', '2026-issue CumDE yr ' + c.cumDeYr + ' (' + cy + ')=' + fmt(m.cumDE26[cy] || 0, 2), 'C6: 2026-issue CumDE > 0 by yr ' + c.cumDeYr));
       var minCumDE26 = Math.min.apply(null, Object.values(m.cumDE26)); if (c.cumDEFloor != null && minCumDE26 < c.cumDEFloor) f.push(lbl('CF', 'CUMDE_FLOOR', 'min 2026-issue cumDE $' + fmt(minCumDE26, 1) + 'M < floor $' + fmt(c.cumDEFloor, 1) + 'M', 'CumDE floor ≥ $' + fmt(c.cumDEFloor, 1) + 'M'));
       if (c.de1Floor != null && (m.de26[2026] || 0) < c.de1Floor) f.push(lbl('D1', 'DE1_FLOOR', '2026 (year-1) DE $' + fmt(m.de26[2026] || 0, 1) + 'M < floor $' + fmt(c.de1Floor, 1) + 'M', 'Year-1 DE floor ≥ $' + fmt(c.de1Floor, 1) + 'M'));
+      if (stochR && stochR.minRBCs && stochR.minRBCs.length && c.rbcTailX != null && c.rbcTailY != null) {   // trough-RBC tail (Slow mode only)
+        var rb = stochR.minRBCs.filter(function (r) { return r != null && r < c.rbcTailX; }).length, rprob = rb / stochR.minRBCs.length;
+        if (rprob > c.rbcTailY) f.push(lbl('RT', 'RBC_TAIL', 'P(trough RBC<' + rx(c.rbcTailX) + ')=' + pct(rprob) + ' > ' + pct(c.rbcTailY), 'RBC tail: P(trough RBC < ' + rx(c.rbcTailX) + ') ≤ ' + pct(c.rbcTailY)));
+      }
       return f;
     }
     function markFrontier(arr) { var feas = arr.filter(function (s) { return s.feasible && s.portNPV != null && isFinite(s.portNPV); }); feas.forEach(function (s) { s.isFrontier = !feas.some(function (o) { return o !== s && o.portNPV >= s.portNPV && o.risk <= s.risk && (o.portNPV > s.portNPV || o.risk < s.risk); }); }); }

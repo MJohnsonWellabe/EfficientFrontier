@@ -28,19 +28,25 @@ function runFrontier(S, F) {
     var sales = { MS: msA[i], PN: pnA[i], HI: hiA[i] };
     var mc = { MS: 1, PN: 1, HI: 1 }, ml = { MS: 1, PN: 1, HI: 1 };
     var det = F.buildScen(sales, mc, ml);
-    var sIRRs = [], sNPVs = [], sDD = [];
+    var sIRRs = [], sNPVs = [], sDD = [], sMinRBC = [];
     for (var k = 0; k < ns; k++) {
       var _s = F.shockFromBank(BANK[k]);
-      var sm = F.stochMetrics(sales, _s.cm, _s.lm, _s.nm);
-      sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd);
+      if (S.slowMode) {                                                        // Slow mode: full RBC recompute per draw
+        var sm = F.buildScen(sales, _s.cm, _s.lm, { combined: _s.nm, proc: _s.nmProc });
+        var dd = 0; for (var yy = 2026; yy <= 2055; yy++) { var cv = sm.cumDE26[yy]; if (cv != null && cv < dd) dd = cv; }
+        sIRRs.push(sm.irr26); sNPVs.push(sm.npv26); sDD.push(dd); sMinRBC.push(sm.minRBC);
+      } else {
+        var sm = F.stochMetrics(sales, _s.cm, _s.lm, _s.nm);
+        sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd);
+      }
     }
     var dr = F.downsideRisk(sNPVs, sDD, det.npv26), risk = dr.risk;
-    var fails = F.evalCons(det, { irrs: sIRRs });
+    var fails = F.evalCons(det, S.slowMode ? { irrs: sIRRs, minRBCs: sMinRBC } : { irrs: sIRRs });
     S.results.push({
       id: i + 1, sales: sales, portIRR: det.irr26, portNPV: det.npv26, wtdIRR: det.wtdIRR, risk: risk,
       portIRRAll: det.portIRR, portNPVAll: det.portNPV, irr26: det.irr26, npv26: det.npv26,
       minRBC: det.minRBC, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst,
-      stochIRRs: sIRRs, stochNPVs: sNPVs, stochDD: sDD,
+      stochIRRs: sIRRs, stochNPVs: sNPVs, stochDD: sDD, stochMinRBC: S.slowMode ? sMinRBC : null,
       failures: fails, feasible: fails.length === 0, isFrontier: false
     });
   }
@@ -52,6 +58,7 @@ function main() {
   var mode = (process.argv[2] || 'zero').toLowerCase();
   var growth = (mode === 'default') ? D.defaultGrowth() : D.zeroGrowth();
   var S = D.buildState(EFENG, DATA, growth);
+  if (process.argv.indexOf('slow') >= 0) S.slowMode = true;   // Slow mode: per-draw trough-RBC tail
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
   var results = runFrontier(S, F);

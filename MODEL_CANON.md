@@ -75,14 +75,16 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 - **Hurdle rates:** MS `12%`, PN `10%`, HI `10%`
 - **Stochastic grid:** `100` LHS scenarios × `100` stochastic runs
 - **Constraints (Configuration-tab defaults, updated 2026-06-13):**
-  - C1 — Min RBC ratio 2026–2030 ≥ **3.5×**
+  - C1 — Min RBC ratio 2026–2030 ≥ **4.0×**
   - C2 — Min ΔTAC / BOP TAC ≥ **−12%** (every year)
   - C3 — 2026-issue IRR ≥ sales-weighted hurdle (**on**)
   - C4 — 2026-issue IRR tail: P(IRR < **8%**) ≤ **15%**
   - C5 — 2026-issue DE > 0 by **yr 4** (2029)
   - C6 — 2026-issue cumulative DE > 0 by **yr 10** (2035)
   - CumDE floor ≥ **−$180M**; Year-1 DE floor ≥ **−$150M**
-- **Surplus note:** default **ON**, **$100M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
+  - Trough-RBC tail (**Slow mode only**): P(min RBC 2026–2030 < **350%**) ≤ **10%** across stochastic draws — the stochastic counterpart to C1, full-book/note-adjusted.
+- **Run mode:** **Fast** (default) skips the trough-RBC tail (per-draw 2026-issue metrics only, ~1 min); **Slow** runs a full RBC recompute per stochastic draw to evaluate the trough-RBC tail (~4–5 min at 100×100).
+- **Surplus note:** default **ON**, **$150M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
   Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the
   §1 figures). **§1 RBC remains the no-note engine anchor** verified by `node runner/validate.js`.
 
@@ -123,11 +125,11 @@ anchors.
 
 **Default schedule** (decimals; editable in the Configuration tab under each product's sales anchor):
 
-| Product | 2027 | 2028 | 2029 | 2030 | 2031–2035 |
-|---|---|---|---|---|---|
-| Medicare Supplement (MS) | 0% | 0% | 0% | 0% | 0% |
-| Preneed (PN) | 10% | 10% | 10% | 10% | 10% |
-| Hospital Indemnity (HI) | 5% | 5% | 5% | 5% | 5% |
+| Product | 2027 | 2028 | 2029 | 2030 | 2031 | 2032–2035 |
+|---|---|---|---|---|---|---|
+| Medicare Supplement (MS) | −12% | 0% | 0% | 10% | 10% | 5% |
+| Preneed (PN) | 10% | 10% | 10% | 10% | 10% | 10% |
+| Hospital Indemnity (HI) | 5% | 5% | 5% | 5% | 5% | 5% |
 
 **Invariants (both verified 2026-06-13):**
 
